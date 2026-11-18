@@ -94,7 +94,6 @@ class V4l2StatelessH265Decoder : public IDmaDecoder {
     // Exported dma-buf, one fd per plane, valid once ExportCapture ran.
     int fd[V4l2DmaFrame::kMaxPlanes] = {-1, -1, -1, -1};
     std::uint32_t offsets[V4l2DmaFrame::kMaxPlanes] = {0, 0, 0, 0};
-    std::uint32_t pitches[V4l2DmaFrame::kMaxPlanes] = {0, 0, 0, 0};
   };
 
   // A decoded picture the DPB still holds as a reference.

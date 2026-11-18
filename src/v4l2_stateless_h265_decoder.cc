@@ -27,19 +27,19 @@ constexpr int kMaxDpb = V4L2_HEVC_DPB_ENTRIES_NUM_MAX;
 // DRM fourccs and the Broadcom SAND128 column-tiled modifier (uapi
 // drm_fourcc.h), inlined so the core library needs no libdrm at build time.
 // The V4L2 column-tiled CAPTURE formats map to a standard DRM format plus the
-// SAND128 modifier, whose parameter carries the tile column height a consumer
-// needs to import and detile the dma-buf.
+// SAND128 modifier. The modifier is given bare, with each plane's column
+// height in its pitch. The modifier can carry a column height instead, but
+// one height for both planes, and with it set a compositor no longer finds
+// the modifier in the list it advertises. Seen on a Pi 5: Weston 14 drew such
+// a frame as luma alone, and a frame with a buffer per plane had wrong chroma
+// past the first column under Mesa. Bare, both layouts are right under
+// Weston and wlroots, and vc4's planes read the pitch the same way.
 constexpr std::uint32_t kDrmFormatNV12 = 0x3231564e;  // 'NV12' (8-bit 4:2:0)
 constexpr std::uint32_t kDrmFormatP030 = 0x30333050;  // 'P030' (10-bit packed)
-std::uint64_t Sand128ColHeight(std::uint32_t col_h) {
-  constexpr std::uint64_t kVendorBroadcom = 7;
-  // fourcc_mod_broadcom_code(4, v): the SAND128 (128-byte column) tiling. Code
-  // 3 is SAND64 and code 5 is SAND256 -- the wrong one silently mis-tiles a KMS
-  // plane or a GL import, so it must match the actual 128-byte column layout.
-  constexpr std::uint64_t kSand128 = 4;
-  return (kVendorBroadcom << 56) |
-         ((static_cast<std::uint64_t>(col_h) << 8) | kSand128);
-}
+// fourcc_mod_broadcom_code(4, 0): the SAND128 (128-byte column) tiling. Code 3
+// is SAND64 and code 5 is SAND256 -- the wrong one silently mis-tiles a KMS
+// plane or a GL import, so it must match the actual 128-byte column layout.
+constexpr std::uint64_t kModifierSand128 = (std::uint64_t{7} << 56) | 4;
 
 int Xioctl(int fd, unsigned long req, void* arg) {
   int r;
@@ -991,7 +991,6 @@ bool V4l2StatelessH265Decoder::ExportCapture(int index) {
     eb.flags = O_RDONLY | O_CLOEXEC;
     if (Xioctl(video_fd_, VIDIOC_EXPBUF, &eb) < 0) return false;
     c.fd[k] = eb.fd;
-    c.pitches[k] = cap_stride_;
     c.offsets[k] = 0;
   }
   return true;
@@ -1010,24 +1009,24 @@ bool V4l2StatelessH265Decoder::Acquire(V4l2DmaFrame* out) {
   out->capture_index = static_cast<std::uint32_t>(cap);
   out->width = coded_w_;
   out->height = coded_h_;
-  // Present a standard DRM format plus the SAND128 modifier (carrying the tile
-  // column height) so a GL/KMS consumer can import and detile the dma-buf.
+  // A standard DRM format plus the SAND128 modifier, so a GL or KMS consumer
+  // can import and detile the dma-buf. Each plane's pitch is the height of
+  // its columns, in rows.
   out->drm_fourcc = coded_bit_depth_ == 10 ? kDrmFormatP030 : kDrmFormatNV12;
-  out->modifier = Sand128ColHeight(luma_col_h_);
+  out->modifier = kModifierSand128;
   out->num_planes = cap_planes_;
   for (int p = 0; p < V4l2DmaFrame::kMaxPlanes; ++p) {
     out->fds[p] = (p < static_cast<int>(cap_planes_)) ? c.fd[p] : -1;
     out->offsets[p] = c.offsets[p];
-    out->pitches[p] = c.pitches[p];
+    out->pitches[p] = p == 0 ? luma_col_h_ : chroma_col_h_;
   }
   if (cap_one_buffer_) {
     // One buffer: each 128-byte column is its luma rows, then its chroma
-    // rows. bytesperline is the height of a whole column, which is what the
-    // modifier carries, and chroma starts one padded picture height down.
-    out->modifier = Sand128ColHeight(cap_stride_);
+    // rows. bytesperline is the height of a whole column, the same for both
+    // planes, and chroma starts one padded picture height down.
     out->num_planes = 2;
     out->fds[1] = c.fd[0];
-    out->pitches[0] = out->pitches[1] = cap_width_;
+    out->pitches[0] = out->pitches[1] = cap_stride_;
     out->offsets[1] = cap_height_ * 128;
   }
   out->timestamp = c.timestamp;
