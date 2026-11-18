@@ -3,7 +3,9 @@ SPDX-FileCopyrightText: 2026 Joel Winarske
 SPDX-License-Identifier: MIT
 -->
 
-# v4l2-webrtc-codec
+# dmabuf-codec
+
+Formerly `v4l2-webrtc-codec`. The `v4l2wc` prefix in the sources dates from that name.
 
 Stateless (rkvdec2/rkvdec via the V4L2 request API) and stateful (Venus)
 hardware `webrtc::VideoDecoder` factory that emits decoded frames as

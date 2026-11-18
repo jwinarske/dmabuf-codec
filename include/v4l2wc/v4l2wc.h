@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 /*
- * v4l2wc.h — public C entry point for v4l2-webrtc-codec.
+ * v4l2wc.h — public C entry point for dmabuf-codec.
  *
  * Self-contained C header. This is the entire surface the factory injection
  * and the flat C API consume: build a webrtc::VideoDecoderFactory* that

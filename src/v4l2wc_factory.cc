@@ -69,7 +69,7 @@ void* v4l2wc_create_encoder_factory(const V4l2WcEncoderConfig* cfg) {
 }
 
 const char* v4l2wc_version_string(void) {
-  return "v4l2-webrtc-codec (stateful H.264 via drm-cxx V4l2DecoderSource)";
+  return "dmabuf-codec (stateful H.264 via drm-cxx V4l2DecoderSource)";
 }
 
 }  // extern "C"
