@@ -579,6 +579,17 @@ std::unique_ptr<OmxDecoder> OmxDecoder::Create(
   }
   s->qcom = component.rfind("OMX.qcom.", 0) == 0 ||
             component.rfind("OMX.qti.", 0) == 0;
+  if (!s->qcom) {
+    // Where a component keeps the dma-buf behind an output buffer is its
+    // vendor's business, and this engine knows one vendor's. Any other is
+    // refused here, before the component is asked to do anything: refusing
+    // it later, with buffers half allocated, means tearing it down in the
+    // middle of a state change, and a component may not survive that
+    // (StarFive's OMX_FreeHandle does not return).
+    V4L2WC_LOG(V4L2WC_INFO)
+        << "omx: " << component << ": no known way to its output dma-bufs";
+    return nullptr;
+  }
 
   static OMX_CALLBACKTYPE callbacks = {&State::OnEvent, &State::OnEmptyDone,
                                        &State::OnFillDone};
