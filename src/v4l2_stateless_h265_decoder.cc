@@ -393,6 +393,14 @@ bool V4l2StatelessH265Decoder::EnsureConfigured(const h265::Sps& sps) {
   if (Xioctl(video_fd_, VIDIOC_S_FMT, &cfmt) < 0) return false;
   cap_fourcc_ = cfmt.fmt.pix_mp.pixelformat;
   cap_planes_ = cfmt.fmt.pix_mp.num_planes;
+  // What the driver chose, not what was asked for: a driver without the
+  // one-buffer format answers S_FMT with one it does have.
+  cap_one_buffer_ =
+      cap_planes_ == 1 && (cap_fourcc_ == nc12_one || cap_fourcc_ == nc30_one);
+  if (one_buffer_ && !cap_one_buffer_) {
+    V4L2WC_LOG(V4L2WC_WARNING)
+        << "v4l2-h265: no one-buffer capture format, using the driver's";
+  }
   cap_width_ = cfmt.fmt.pix_mp.width;
   cap_height_ = cfmt.fmt.pix_mp.height;
   V4L2WC_LOG(V4L2WC_INFO) << "v4l2-h265: capture " << cap_width_ << "x"
@@ -667,7 +675,7 @@ bool V4l2StatelessH265Decoder::DecodePicture(
     v4l2_ctrl_hevc_slice_params sp{};
     sp.data_byte_offset = static_cast<__u32>(slice_off + raw_bit / 8);
     sp.bit_size = static_cast<__u32>((np->raw.size() - raw_bit / 8) * 8);
-    if (one_buffer_ && cap_planes_ == 1) {
+    if (cap_one_buffer_) {
       // rpi-hevc-dec takes the one-buffer layout as the mark of its older
       // interface, in which bit_size ran from the start of the buffer and
       // not from the slice data: it subtracts data_byte_offset itself.
@@ -1012,7 +1020,7 @@ bool V4l2StatelessH265Decoder::Acquire(V4l2DmaFrame* out) {
     out->offsets[p] = c.offsets[p];
     out->pitches[p] = c.pitches[p];
   }
-  if (cap_planes_ == 1 && one_buffer_) {
+  if (cap_one_buffer_) {
     // One buffer: each 128-byte column is its luma rows, then its chroma
     // rows. bytesperline is the height of a whole column, which is what the
     // modifier carries, and chroma starts one padded picture height down.
