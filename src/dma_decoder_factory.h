@@ -28,6 +28,10 @@ struct DmaDecoderConfig {
   const char* v4l2_hevc_device = nullptr;   // stateless HEVC, default video19
   const char* vaapi_render_node = nullptr;  // default "/dev/dri/renderD128"
   const char* omx_core_library = nullptr;   // default "libOmxCore.so"
+
+  // Ask for a frame's planes in one dma-buf where the engine has a choice
+  // (the stateless HEVC engine: a Pi 5's driver defaults to a buffer each).
+  bool one_buffer_frames = false;
 };
 
 // Builds a decoder for `config`, or nullptr when no engine can serve it.

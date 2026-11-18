@@ -62,8 +62,8 @@ std::unique_ptr<IDmaDecoder> CreateDmaDecoder(const DmaDecoderConfig& config) {
     // KMS-plane compositor held ~8, starving the DPB ("Missing inuse DPB ent")
     // and stalling decode a few seconds in. 28 matches the VAAPI path's
     // headroom below.
-    if (auto stateless =
-            V4l2StatelessH265Decoder::Create(hevc_node, /*pool_size=*/28)) {
+    if (auto stateless = V4l2StatelessH265Decoder::Create(
+            hevc_node, /*pool_size=*/28, config.one_buffer_frames)) {
       V4L2WC_LOG(V4L2WC_INFO)
           << "v4l2wc: V4L2 stateless HEVC decoder on " << hevc_node << " "
           << config.coded_width << "x" << config.coded_height;

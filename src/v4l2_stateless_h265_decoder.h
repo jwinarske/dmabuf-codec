@@ -39,9 +39,12 @@ class V4l2StatelessH265Decoder : public IDmaDecoder {
   // Opens `video_node` (e.g. /dev/video19) and finds its request-API media
   // device by driver name. The OUTPUT (coded) and CAPTURE (decoded) queues and
   // the buffer pools are created lazily on the first SPS. Returns nullptr if
-  // the device is not a stateless HEVC decoder.
+  // the device is not a stateless HEVC decoder. `one_buffer` asks the driver
+  // for the layout that keeps a frame's luma and chroma in one buffer, for a
+  // consumer that takes one dma-buf a frame; the default is the driver's own
+  // choice, which on a Pi 5 is a buffer each.
   static std::unique_ptr<V4l2StatelessH265Decoder> Create(
-      const char* video_node, std::uint32_t pool_size);
+      const char* video_node, std::uint32_t pool_size, bool one_buffer = false);
   ~V4l2StatelessH265Decoder() override;
 
   V4l2StatelessH265Decoder(const V4l2StatelessH265Decoder&) = delete;
@@ -107,6 +110,8 @@ class V4l2StatelessH265Decoder : public IDmaDecoder {
   bool configured_ = false;
   std::uint32_t coded_w_ = 0, coded_h_ = 0, coded_bit_depth_ = 8;
   std::uint32_t pool_size_ = 0;
+  bool one_buffer_ = false;
+  std::uint32_t cap_width_ = 0, cap_height_ = 0;  // as the driver padded them
 
   std::uint32_t cap_fourcc_ = 0, cap_stride_ = 0;
   std::uint32_t cap_planes_ = 0;
