@@ -67,7 +67,7 @@ buffer header's private data in its own layout. Qualcomm's is the one layout
 known here, and a component whose buffers yield no fd is refused. Run on an
 SA8155P with the downstream `msm_vidc` driver, where `V4l2M2mDecoder` stops at
 the capability check: 640x360 H.264, every frame, in order, through a flush and
-a second decoder (`test/hw/omx_decode_hw_test.cc`). Only H.264 has been run.
+a second decoder (`test/hw/dma_decode_hw_test.cc`). Only H.264 has been run.
 
 The headers are vendored under `third_party/openmax_il/`.
 

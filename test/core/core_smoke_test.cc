@@ -98,6 +98,11 @@ int main() {
   config.coded_height = 720;
   config.v4l2_device = "/dev/v4l2wc-does-not-exist";
   config.vaapi_render_node = "/dev/dri/v4l2wc-nonexistent";
+  // Every engine is pointed away from the machine, or the test finds the
+  // decoder of a device that has one (a Pi 5's HEVC node, a board's OpenMAX
+  // core) and fails for having worked.
+  config.v4l2_hevc_device = "/dev/v4l2wc-does-not-exist";
+  config.omx_core_library = "libv4l2wc-no-such-core.so";
   auto picked = v4l2wc::CreateDmaDecoder(config);
   CHECK(picked == nullptr);
 

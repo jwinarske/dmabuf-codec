@@ -10,7 +10,7 @@
 #     fallback : ['dmabuf-codec', 'dmabuf_codec_dep'])
 #
 # The webrtc wrapper is not built here; it is absorbed into libwebrtc.so via
-# BUILD.gn. Fuzzers and the on-hardware tests stay with CMake.
+# BUILD.gn. Fuzzers and the VAAPI on-hardware tests stay with CMake.
 project(
   'dmabuf-codec',
   'cpp',
@@ -133,6 +133,16 @@ if build_tests
       'test/core/core_smoke_test.cc',
       dependencies : dmabuf_codec_dep,
     ),
+  )
+endif
+
+# Not registered as a test: it needs a decoder on the machine and a clip.
+#   dma_decode_hw_test h264|hevc clip
+if get_option('hw_tests')
+  executable(
+    'dma_decode_hw_test',
+    'test/hw/dma_decode_hw_test.cc',
+    dependencies : dmabuf_codec_dep,
   )
 endif
 
