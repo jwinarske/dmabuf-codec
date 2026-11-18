@@ -111,6 +111,7 @@ class V4l2StatelessH265Decoder : public IDmaDecoder {
   std::uint32_t coded_w_ = 0, coded_h_ = 0, coded_bit_depth_ = 8;
   std::uint32_t pool_size_ = 0;
   bool one_buffer_ = false;
+  bool cap_one_buffer_ = false;  // the capture format is NC12 / NC30
   std::uint32_t cap_width_ = 0, cap_height_ = 0;  // as the driver padded them
 
   std::uint32_t cap_fourcc_ = 0, cap_stride_ = 0;
