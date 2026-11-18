@@ -9,6 +9,7 @@
 #include <cstddef>
 
 #include "src/log.h"
+#include "src/omx_decoder.h"
 #include "src/v4l2_m2m_decoder.h"
 #include "src/v4l2_stateless_h265_decoder.h"
 #if V4L2WC_HAVE_VAAPI
@@ -67,8 +68,21 @@ std::unique_ptr<IDmaDecoder> CreateDmaDecoder(const DmaDecoderConfig& config) {
     }
   }
 
+  // OpenMAX: a vendor kernel whose decoder is not a V4L2 M2M device but has an
+  // OpenMAX core in userspace. Costs one failed dlopen where there is none.
+  // The extra buffers are for what the compositor and the frame pipeline hold,
+  // as above.
+  if (auto omx =
+          OmxDecoder::Create(config.omx_core_library, config.codec_fourcc,
+                             config.coded_width, config.coded_height,
+                             /*extra_output_buffers=*/16)) {
+    V4L2WC_LOG(V4L2WC_INFO) << "v4l2wc: OpenMAX decoder " << config.coded_width
+                            << "x" << config.coded_height;
+    return omx;
+  }
+
 #if V4L2WC_HAVE_VAAPI
-  // VAAPI second: the desktop path, for H.264 and HEVC. The pool covers the
+  // VAAPI last: the desktop path, for H.264 and HEVC. The pool covers the
   // maximum DPB plus frames in flight to the compositor.
   if (config.codec_fourcc == V4L2_PIX_FMT_H264 ||
       config.codec_fourcc == V4L2_PIX_FMT_HEVC) {

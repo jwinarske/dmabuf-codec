@@ -53,6 +53,24 @@ vendored here under `third_party/lw_abi/`).
 
 No software fallback lives here — the composite factory in libwebrtc owns that.
 
+## OpenMAX engine
+
+`src/omx_decoder.{h,cc}` is an `IDmaDecoder` for a board whose hardware decoder
+is not a V4L2 M2M device but sits behind the vendor's OpenMAX core: a vendor
+kernel whose video node takes the vendor's own ioctl dialect. It loads the core
+(`libOmxCore.so`) at run time, finds the decoder by role (`video_decoder.avc`),
+asks for linear NV12 and hands out the component's own output buffers as
+dma-bufs. `CreateDmaDecoder` tries it after the V4L2 engines and before VAAPI.
+
+The IL does not say where a buffer's dma-buf fd is; each vendor puts it in the
+buffer header's private data in its own layout. Qualcomm's is the one layout
+known here, and a component whose buffers yield no fd is refused. Run on an
+SA8155P with the downstream `msm_vidc` driver, where `V4l2M2mDecoder` stops at
+the capability check: 640x360 H.264, every frame, in order, through a flush and
+a second decoder (`test/hw/omx_decode_hw_test.cc`). Only H.264 has been run.
+
+The headers are vendored under `third_party/openmax_il/`.
+
 ## Pool lifecycle
 
 The CAPTURE queue is the frame pool, sized `reorder + pipeline + 1`. Teardown
@@ -118,5 +136,6 @@ test/fuzz/                libFuzzer harnesses (wired into ctest)
 test/visl/                stateless oracle — empty, see Memory safety
 test/vicodec/             stateful oracle — empty, see Memory safety
 third_party/lw_abi/       vendored lw_video_sink.h (pinned by LW_ABI_VERSION)
+third_party/openmax_il/   vendored OpenMAX IL 1.1.2 headers (OpenMAX engine)
 BUILD.gn                  GN target (lw_enable_v4l2_codec)
 ```
