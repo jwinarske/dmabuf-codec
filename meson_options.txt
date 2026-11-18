@@ -8,6 +8,12 @@ option(
   description : 'Build the VAAPI H.264/H.265 engines (needs the libva headers; the library is dlopened at run time)',
 )
 option(
+  'hw_tests',
+  type : 'boolean',
+  value : false,
+  description : 'Build test/hw/dma_decode_hw_test, which needs a device with a hardware decoder and a clip',
+)
+option(
   'tests',
   type : 'feature',
   value : 'auto',

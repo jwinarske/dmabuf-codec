@@ -150,10 +150,11 @@ endif()  # V4L2WC_BUILD_TESTS (core smoke test)
 option(V4L2WC_ENABLE_HW_TESTS "Build tests that need a real VAAPI/V4L2 device"
        OFF)
 if(V4L2WC_ENABLE_HW_TESTS)
-  # Needs a board with an OpenMAX core and an Annex B H.264 file. Run e.g.:
-  #   ./omx_decode_hw_test clip.h264
-  add_executable(omx_decode_hw_test test/hw/omx_decode_hw_test.cc)
-  target_link_libraries(omx_decode_hw_test PRIVATE v4l2wc_core)
+  # Whichever engine the factory picks on the device, and an Annex B file
+  # with access unit delimiters. Run e.g.:
+  #   ./dma_decode_hw_test h264 clip.h264
+  add_executable(dma_decode_hw_test test/hw/dma_decode_hw_test.cc)
+  target_link_libraries(dma_decode_hw_test PRIVATE v4l2wc_core)
 endif()
 if(V4L2WC_ENABLE_HW_TESTS AND V4L2WC_VA_INCLUDE)
   add_executable(vaapi_h265_hw_test test/hw/vaapi_h265_hw_test.cc)

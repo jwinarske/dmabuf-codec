@@ -1,14 +1,18 @@
 // SPDX-FileCopyrightText: 2026 Joel Winarske
 // SPDX-License-Identifier: MIT
 
-// On-hardware test of the OpenMAX engine. Decodes an Annex B H.264 file that
-// has an access unit delimiter before each frame, three ways through the
+// On-hardware test of whichever engine the factory picks on this device.
+// Decodes an Annex B H.264 or HEVC file that has an access unit delimiter
+// before each frame and no reordered frames, three ways through the
 // IDmaDecoder seam, and checks what comes out:
 //   1. start to finish, holding several frames before releasing them;
 //   2. a flush halfway, then the whole file again (a seek);
 //   3. a second decoder after the first is destroyed.
-// Needs a board with an OpenMAX core. Usage: omx_decode_hw_test clip.h264
-// [core]
+// Usage: dma_decode_hw_test h264|hevc clip [--v4l2 node] [--hevc node]
+//        [--omx core library] [--va render node]
+// A clip for it:
+//   ffmpeg -f lavfi -i testsrc=s=640x360:d=2:r=30 -c:v libx265
+//     -x265-params bframes=0 -bsf:v hevc_metadata=aud=insert -f hevc clip.h265
 
 #include <fcntl.h>
 #include <linux/videodev2.h>
@@ -17,11 +21,12 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <deque>
 #include <memory>
 #include <vector>
 
-#include "src/omx_decoder.h"
+#include "src/dma_decoder_factory.h"
 
 namespace {
 
@@ -39,7 +44,12 @@ struct Stream {
   std::vector<std::size_t> units;  // start of each access unit, then the end
 };
 
-bool Load(const char* path, Stream* s) {
+// Whether the NAL unit whose header starts at `b` is an access unit delimiter.
+bool IsDelimiter(const std::uint8_t* b, bool hevc) {
+  return hevc ? ((b[0] >> 1) & 0x3f) == 35 : (b[0] & 0x1f) == 9;
+}
+
+bool Load(const char* path, bool hevc, Stream* s) {
   FILE* f = std::fopen(path, "rb");
   if (f == nullptr) {
     return false;
@@ -51,12 +61,13 @@ bool Load(const char* path, Stream* s) {
   }
   std::fclose(f);
   const auto& d = s->bytes;
-  // An access unit runs from one delimiter (NAL type 9) to the next; what
-  // precedes the first delimiter goes with the first unit.
+  // An access unit runs from one delimiter to the next; what precedes the
+  // first delimiter goes with the first unit.
   s->units.push_back(0);
   bool first = true;
   for (std::size_t i = 0; i + 3 < d.size(); ++i) {
-    if (d[i] == 0 && d[i + 1] == 0 && d[i + 2] == 1 && (d[i + 3] & 0x1f) == 9) {
+    if (d[i] == 0 && d[i + 1] == 0 && d[i + 2] == 1 &&
+        IsDelimiter(&d[i + 3], hevc)) {
       const std::size_t start = (i > 0 && d[i - 1] == 0) ? i - 1 : i;
       if (!first) {
         s->units.push_back(start);
@@ -65,7 +76,7 @@ bool Load(const char* path, Stream* s) {
     }
   }
   s->units.push_back(d.size());
-  return s->units.size() >= 2;
+  return s->units.size() > 2;
 }
 
 struct Result {
@@ -120,16 +131,24 @@ bool Pump(v4l2wc::IDmaDecoder* dec, const Stream& s, std::size_t from,
       r->height = f.height;
       if (r->frames == 0 && show_first) {
         std::printf(
-            "first frame %ux%u fd %d planes %u offsets %u/%u pitch %u "
-            "ts %llu\n",
-            f.width, f.height, f.fds[0], f.num_planes, f.offsets[0],
-            f.offsets[1], f.pitches[0],
+            "first frame %ux%u fourcc %.4s modifier 0x%llx fd %d planes %u "
+            "offsets %u/%u pitch %u ts %llu\n",
+            f.width, f.height, reinterpret_cast<const char*>(&f.drm_fourcc),
+            static_cast<unsigned long long>(f.modifier), f.fds[0], f.num_planes,
+            f.offsets[0], f.offsets[1], f.pitches[0],
             static_cast<unsigned long long>(f.timestamp));
-        const off_t size = lseek(f.fds[0], 0, SEEK_END);
+        CHECK(f.fds[0] >= 0);
+        CHECK(f.width > 0 && f.height > 0 && f.pitches[0] > 0);
+        // The samples are read as rows, which is what a linear NV12 buffer
+        // has. A tiled or column layout is left to the display.
+        const bool rows = f.modifier == 0 &&
+                          f.drm_fourcc == V4L2_PIX_FMT_NV12 &&
+                          f.num_planes == 2;
+        const off_t size = rows ? lseek(f.fds[0], 0, SEEK_END) : 0;
         void* p = size > 0 ? mmap(nullptr, static_cast<std::size_t>(size),
                                   PROT_READ, MAP_SHARED, f.fds[0], 0)
                            : MAP_FAILED;
-        CHECK(p != MAP_FAILED);
+        CHECK(!rows || p != MAP_FAILED);
         if (p != MAP_FAILED) {
           const auto* base = static_cast<const std::uint8_t*>(p);
           const std::uint32_t row = f.height / 2;
@@ -168,13 +187,31 @@ bool Pump(v4l2wc::IDmaDecoder* dec, const Stream& s, std::size_t from,
 
 int main(int argc, char** argv) {
   setvbuf(stdout, nullptr, _IONBF, 0);
-  if (argc < 2) {
-    std::printf("usage: %s clip.h264 [core library]\n", argv[0]);
+  const bool hevc = argc > 1 && std::strcmp(argv[1], "hevc") == 0;
+  if (argc < 3 || (!hevc && std::strcmp(argv[1], "h264") != 0)) {
+    std::printf(
+        "usage: %s h264|hevc clip [--v4l2 node] [--hevc node] "
+        "[--omx core library] [--va render node]\n",
+        argv[0]);
     return 2;
   }
+  v4l2wc::DmaDecoderConfig config;
+  config.codec_fourcc = hevc ? V4L2_PIX_FMT_HEVC : V4L2_PIX_FMT_H264;
+  for (int i = 3; i + 1 < argc; i += 2) {
+    if (std::strcmp(argv[i], "--v4l2") == 0) {
+      config.v4l2_device = argv[i + 1];
+    } else if (std::strcmp(argv[i], "--hevc") == 0) {
+      config.v4l2_hevc_device = argv[i + 1];
+    } else if (std::strcmp(argv[i], "--omx") == 0) {
+      config.omx_core_library = argv[i + 1];
+    } else if (std::strcmp(argv[i], "--va") == 0) {
+      config.vaapi_render_node = argv[i + 1];
+    }
+  }
   Stream s;
-  if (!Load(argv[1], &s)) {
-    std::printf("cannot read %s\n", argv[1]);
+  if (!Load(argv[2], hevc, &s)) {
+    std::printf("cannot read %s, or it has no access unit delimiters\n",
+                argv[2]);
     return 2;
   }
   const std::size_t units = s.units.size() - 1;
@@ -187,17 +224,15 @@ int main(int argc, char** argv) {
     }
     return n;
   };
-  const char* core = argc > 2 ? argv[2] : nullptr;
   std::printf("%zu bytes, %zu access units\n", s.bytes.size(), units);
   int fds_before = -1;
 
   {
-    auto dec = v4l2wc::OmxDecoder::Create(core, V4L2_PIX_FMT_H264, 0, 0, 8);
+    auto dec = v4l2wc::CreateDmaDecoder(config);
     CHECK(dec != nullptr);
     if (dec == nullptr) {
       return 1;
     }
-    fds_before = count_fds();
     // 1. Start to finish, six frames held at a time.
     Result all;
     CHECK(Pump(dec.get(), s, 0, units, /*drain=*/true, /*hold=*/6, &all, true));
@@ -206,6 +241,9 @@ int main(int argc, char** argv) {
                 all.ordered ? "in order" : "OUT OF ORDER");
     CHECK(all.frames == units);
     CHECK(all.ordered);
+    // Counted with the decoder's buffers in existence: some engines make
+    // them only once they have seen the stream.
+    fds_before = count_fds();
 
     // 2. Half the file, a flush, then all of it again from its key frame.
     dec->Flush();
@@ -223,7 +261,7 @@ int main(int argc, char** argv) {
 
   // 3. The first decoder is gone; a second starts clean.
   {
-    auto dec = v4l2wc::OmxDecoder::Create(core, V4L2_PIX_FMT_H264, 0, 0, 0);
+    auto dec = v4l2wc::CreateDmaDecoder(config);
     CHECK(dec != nullptr);
     if (dec != nullptr) {
       Result r;
@@ -234,7 +272,8 @@ int main(int argc, char** argv) {
     }
   }
   // The second decoder had the first one's descriptors to reuse; what is open
-  // now is the core's own, which the first Create already had.
+  // now is what the process keeps of the device (an OpenMAX core's own, a
+  // driver library's), which the first decoder already had.
   const int fds_after = count_fds();
   std::printf("open descriptors: %d with one decoder running, %d with none\n",
               fds_before, fds_after);
