@@ -974,6 +974,13 @@ SubmitResult V4l2StatelessH265Decoder::SubmitBitstream(
   }
   if (!have_sps_ || !have_pps_) return SubmitResult::kOk;
   if (!EnsureConfigured(sps_)) return SubmitResult::kError;
+  // A picture is decoded into a CAPTURE buffer the driver holds, and the
+  // decode waits for that buffer to come back. With none queued (the consumer
+  // has them, or they wait as references and output) it would wait with
+  // nothing to end the wait. The caller releases a frame and submits again.
+  std::size_t queued = 0;
+  for (const Capture& c : captures_) queued += c.queued ? 1 : 0;
+  if (queued < pics.size()) return SubmitResult::kTryAgain;
   for (auto& pic : pics) DecodePicture(pic, timestamp);
   return SubmitResult::kOk;
 }

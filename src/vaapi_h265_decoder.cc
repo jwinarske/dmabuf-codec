@@ -919,6 +919,11 @@ bool VaapiH265Decoder::DecodePicture(
 SubmitResult VaapiH265Decoder::SubmitBitstream(const std::uint8_t* data,
                                                std::size_t size,
                                                std::uint64_t timestamp) {
+  // Each picture is decoded into a surface from the pool. With none free
+  // (the consumer has them, or they are references) there is nothing to
+  // decode into, and that is not an error: the caller releases a frame and
+  // submits again. Asked before anything of this unit is taken in.
+  if (configured_ && PickFreeSlot() < 0) return SubmitResult::kTryAgain;
   auto nals = h265::ParseAnnexB(data, size);
   std::vector<const h265::Nal*> vcl;
   for (auto& n : nals) {
