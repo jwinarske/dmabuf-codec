@@ -97,7 +97,6 @@ add_library(v4l2wc_core STATIC
   src/dma_decoder_factory.cc
   src/omx_decoder.cc
   src/v4l2_m2m_decoder.cc
-  src/v4l2_stateless_h265_decoder.cc
 )
 # The OpenMAX engine loads the device's core at run time, so it always builds:
 # it needs the IL headers (vendored) and the dynamic loader.
@@ -108,6 +107,21 @@ target_include_directories(v4l2wc_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_include_directories(v4l2wc_core SYSTEM PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/third_party/openmax_il)
 target_compile_options(v4l2wc_core PRIVATE -Wall -Wextra)
+
+# The stateless HEVC engine is written to the kernel's HEVC request controls,
+# which became stable API in Linux 6.0. A sysroot with older kernel headers
+# builds without that engine.
+include(CheckCXXSymbolExists)
+check_cxx_symbol_exists(V4L2_CID_STATELESS_HEVC_SPS "linux/v4l2-controls.h"
+  V4L2WC_HAVE_STATELESS_HEVC_API)
+if(V4L2WC_HAVE_STATELESS_HEVC_API)
+  target_sources(v4l2wc_core PRIVATE src/v4l2_stateless_h265_decoder.cc)
+  target_compile_definitions(v4l2wc_core PRIVATE V4L2WC_HAVE_STATELESS_HEVC=1)
+else()
+  target_compile_definitions(v4l2wc_core PRIVATE V4L2WC_HAVE_STATELESS_HEVC=0)
+  message(STATUS
+    "v4l2wc_core: kernel headers predate the HEVC request controls, stateless HEVC engine disabled")
+endif()
 
 if(V4L2WC_VA_INCLUDE)
   target_sources(v4l2wc_core PRIVATE

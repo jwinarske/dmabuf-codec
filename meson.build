@@ -44,7 +44,6 @@ core_sources = files(
   'src/log.cc',
   'src/omx_decoder.cc',
   'src/v4l2_m2m_decoder.cc',
-  'src/v4l2_stateless_h265_decoder.cc',
 )
 dl_dep = meson.get_compiler('cpp').find_library('dl', required : false)
 # The OpenMAX engine loads the device's core at run time, so it always builds:
@@ -66,13 +65,27 @@ if have_vaapi
 endif
 have_vaapi_define = '-DV4L2WC_HAVE_VAAPI=@0@'.format(have_vaapi ? 1 : 0)
 
+# The stateless HEVC engine is written to the kernel's HEVC request controls,
+# which became stable API in Linux 6.0. A sysroot with older kernel headers
+# builds without that engine.
+have_stateless_hevc = meson.get_compiler('cpp').has_header_symbol(
+  'linux/v4l2-controls.h',
+  'V4L2_CID_STATELESS_HEVC_SPS',
+)
+if have_stateless_hevc
+  core_sources += files('src/v4l2_stateless_h265_decoder.cc')
+endif
+have_stateless_hevc_define = '-DV4L2WC_HAVE_STATELESS_HEVC=@0@'.format(
+  have_stateless_hevc ? 1 : 0,
+)
+
 core_lib = static_library(
   'v4l2wc_core',
   core_sources,
   include_directories : [inc, omx_inc],
   link_with : parse_lib,
   dependencies : core_deps,
-  cpp_args : have_vaapi_define,
+  cpp_args : [have_vaapi_define, have_stateless_hevc_define],
 )
 
 # The decode seam (src/dma_decoder.h), its engines and the parsers. Headers are
@@ -123,4 +136,11 @@ if build_tests
   )
 endif
 
-summary({'VAAPI engines' : have_vaapi, 'tests' : build_tests}, bool_yn : true)
+summary(
+  {
+    'VAAPI engines' : have_vaapi,
+    'stateless HEVC engine' : have_stateless_hevc,
+    'tests' : build_tests,
+  },
+  bool_yn : true,
+)

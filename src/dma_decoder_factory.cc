@@ -11,7 +11,9 @@
 #include "src/log.h"
 #include "src/omx_decoder.h"
 #include "src/v4l2_m2m_decoder.h"
+#if V4L2WC_HAVE_STATELESS_HEVC
 #include "src/v4l2_stateless_h265_decoder.h"
+#endif
 #if V4L2WC_HAVE_VAAPI
 #include "src/vaapi_h264_decoder.h"
 #include "src/vaapi_h265_decoder.h"
@@ -45,6 +47,7 @@ std::unique_ptr<IDmaDecoder> CreateDmaDecoder(const DmaDecoderConfig& config) {
     return v4l2;
   }
 
+#if V4L2WC_HAVE_STATELESS_HEVC
   // The V4L2 stateless HEVC engine (e.g. rpi-hevc-dec on the Pi): the embedded
   // HEVC path, which the M2M stateful codec above does not carry.
   if (config.codec_fourcc == V4L2_PIX_FMT_HEVC) {
@@ -67,6 +70,7 @@ std::unique_ptr<IDmaDecoder> CreateDmaDecoder(const DmaDecoderConfig& config) {
       return stateless;
     }
   }
+#endif
 
   // OpenMAX: a vendor kernel whose decoder is not a V4L2 M2M device but has an
   // OpenMAX core in userspace. Costs one failed dlopen where there is none.
