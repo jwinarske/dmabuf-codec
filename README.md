@@ -74,6 +74,13 @@ cmake -S . -B build -DCMAKE_CXX_COMPILER=clang++ && cmake --build build
 ctest --test-dir build
 ```
 
+The same libraries and tests build with Meson, which is how a Meson project
+takes this repo as a subproject (`dependency('dmabuf-codec')`):
+
+```sh
+meson setup build && meson test -C build
+```
+
 - **unit tests** over `parse/h264` — the shapes each parser must reject.
 - **fuzz gate** — libFuzzer over each parser, under AddressSanitizer and
   UndefinedBehaviorSanitizer. Ten seconds per target by default, enough for a
