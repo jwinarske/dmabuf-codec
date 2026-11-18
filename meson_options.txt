@@ -1,0 +1,15 @@
+# SPDX-FileCopyrightText: 2026 Joel Winarske
+# SPDX-License-Identifier: MIT
+
+option(
+  'vaapi',
+  type : 'feature',
+  value : 'auto',
+  description : 'Build the VAAPI H.264/H.265 engines (needs the libva headers; the library is dlopened at run time)',
+)
+option(
+  'tests',
+  type : 'feature',
+  value : 'auto',
+  description : 'Build the parser and decode-core tests (auto: only as the top-level project)',
+)
