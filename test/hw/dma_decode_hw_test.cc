@@ -9,7 +9,7 @@
 //   2. a flush halfway, then the whole file again (a seek);
 //   3. a second decoder after the first is destroyed.
 // Usage: dma_decode_hw_test h264|hevc clip [--v4l2 node] [--hevc node]
-//        [--omx core library] [--va render node]
+//        [--omx core library] [--va render node] [--one-buffer]
 // A clip for it:
 //   ffmpeg -f lavfi -i testsrc=s=640x360:d=2:r=30 -c:v libx265
 //     -x265-params bframes=0 -bsf:v hevc_metadata=aud=insert -f hevc clip.h265
@@ -31,6 +31,7 @@
 namespace {
 
 int g_failures = 0;
+bool g_one_buffer = false;  // --one-buffer: a frame is to be one dma-buf
 #define CHECK(cond)                                               \
   do {                                                            \
     if (!(cond)) {                                                \
@@ -138,6 +139,11 @@ bool Pump(v4l2wc::IDmaDecoder* dec, const Stream& s, std::size_t from,
             f.offsets[0], f.offsets[1], f.pitches[0],
             static_cast<unsigned long long>(f.timestamp));
         CHECK(f.fds[0] >= 0);
+        if (g_one_buffer) {
+          for (std::uint32_t p = 1; p < f.num_planes; ++p) {
+            CHECK(f.fds[p] == f.fds[0]);
+          }
+        }
         CHECK(f.width > 0 && f.height > 0 && f.pitches[0] > 0);
         // The samples are read as rows, which is what a linear NV12 buffer
         // has. A tiled or column layout is left to the display.
@@ -208,6 +214,11 @@ int main(int argc, char** argv) {
       config.vaapi_render_node = argv[i + 1];
     }
   }
+  for (int i = 3; i < argc; ++i) {
+    config.one_buffer_frames =
+        config.one_buffer_frames || std::strcmp(argv[i], "--one-buffer") == 0;
+  }
+  g_one_buffer = config.one_buffer_frames;
   Stream s;
   if (!Load(argv[2], hevc, &s)) {
     std::printf("cannot read %s, or it has no access unit delimiters\n",

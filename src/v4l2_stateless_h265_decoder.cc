@@ -229,7 +229,7 @@ void BuildSliceContext(const h265::Sps& sps, const h265::Pps& pps,
 }  // namespace
 
 std::unique_ptr<V4l2StatelessH265Decoder> V4l2StatelessH265Decoder::Create(
-    const char* video_node, std::uint32_t pool_size) {
+    const char* video_node, std::uint32_t pool_size, bool one_buffer) {
   auto dec =
       std::unique_ptr<V4l2StatelessH265Decoder>(new V4l2StatelessH265Decoder());
   dec->video_fd_ = ::open(video_node, O_RDWR | O_CLOEXEC);
@@ -274,6 +274,7 @@ std::unique_ptr<V4l2StatelessH265Decoder> V4l2StatelessH265Decoder::Create(
     return nullptr;
   }
   dec->pool_size_ = pool_size;
+  dec->one_buffer_ = one_buffer;
   V4L2WC_LOG(V4L2WC_INFO) << "v4l2-h265: " << video_node << " (" << cap.driver
                           << ")";
   return dec;
@@ -373,8 +374,12 @@ bool V4l2StatelessH265Decoder::EnsureConfigured(const h265::Sps& sps) {
   if (Xioctl(video_fd_, VIDIOC_G_FMT, &gfmt) < 0) return false;
   const std::uint32_t nc12 = v4l2_fourcc('N', 'c', '1', '2');  // 8-bit col128
   const std::uint32_t nc30 = v4l2_fourcc('N', 'c', '3', '0');  // 10-bit col128
+  // The same two with luma and chroma of each column in one buffer.
+  const std::uint32_t nc12_one = v4l2_fourcc('N', 'C', '1', '2');
+  const std::uint32_t nc30_one = v4l2_fourcc('N', 'C', '3', '0');
   const std::uint32_t want_fourcc =
-      coded_bit_depth_ == 10
+      one_buffer_ ? (coded_bit_depth_ == 10 ? nc30_one : nc12_one)
+      : coded_bit_depth_ == 10
           ? nc30
           : (gfmt.fmt.pix_mp.pixelformat != 0 ? gfmt.fmt.pix_mp.pixelformat
                                               : nc12);
@@ -388,6 +393,14 @@ bool V4l2StatelessH265Decoder::EnsureConfigured(const h265::Sps& sps) {
   if (Xioctl(video_fd_, VIDIOC_S_FMT, &cfmt) < 0) return false;
   cap_fourcc_ = cfmt.fmt.pix_mp.pixelformat;
   cap_planes_ = cfmt.fmt.pix_mp.num_planes;
+  cap_width_ = cfmt.fmt.pix_mp.width;
+  cap_height_ = cfmt.fmt.pix_mp.height;
+  V4L2WC_LOG(V4L2WC_INFO) << "v4l2-h265: capture " << cap_width_ << "x"
+                          << cap_height_ << " planes " << cap_planes_
+                          << " bytesperline "
+                          << cfmt.fmt.pix_mp.plane_fmt[0].bytesperline
+                          << " sizeimage "
+                          << cfmt.fmt.pix_mp.plane_fmt[0].sizeimage;
   cap_stride_ = cfmt.fmt.pix_mp.plane_fmt[0].bytesperline;
   luma_col_h_ = cap_stride_
                     ? cfmt.fmt.pix_mp.plane_fmt[0].sizeimage / cap_stride_
@@ -654,6 +667,12 @@ bool V4l2StatelessH265Decoder::DecodePicture(
     v4l2_ctrl_hevc_slice_params sp{};
     sp.data_byte_offset = static_cast<__u32>(slice_off + raw_bit / 8);
     sp.bit_size = static_cast<__u32>((np->raw.size() - raw_bit / 8) * 8);
+    if (one_buffer_ && cap_planes_ == 1) {
+      // rpi-hevc-dec takes the one-buffer layout as the mark of its older
+      // interface, in which bit_size ran from the start of the buffer and
+      // not from the slice data: it subtracts data_byte_offset itself.
+      sp.bit_size += sp.data_byte_offset * 8;
+    }
     sp.num_entry_point_offsets = ssh.num_entry_point_offsets;
     sp.nal_unit_type = static_cast<__u8>(np->type);
     sp.nuh_temporal_id_plus1 = np->nuh_temporal_id_plus1;
@@ -992,6 +1011,16 @@ bool V4l2StatelessH265Decoder::Acquire(V4l2DmaFrame* out) {
     out->fds[p] = (p < static_cast<int>(cap_planes_)) ? c.fd[p] : -1;
     out->offsets[p] = c.offsets[p];
     out->pitches[p] = c.pitches[p];
+  }
+  if (cap_planes_ == 1 && one_buffer_) {
+    // One buffer: each 128-byte column is its luma rows, then its chroma
+    // rows. bytesperline is the height of a whole column, which is what the
+    // modifier carries, and chroma starts one padded picture height down.
+    out->modifier = Sand128ColHeight(cap_stride_);
+    out->num_planes = 2;
+    out->fds[1] = c.fd[0];
+    out->pitches[0] = out->pitches[1] = cap_width_;
+    out->offsets[1] = cap_height_ * 128;
   }
   out->timestamp = c.timestamp;
   // Colorimetry from the active SPS VUI (constant across the coded sequence).
