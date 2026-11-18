@@ -282,6 +282,23 @@ int main(int argc, char** argv) {
       CHECK(r.frames == units);
     }
   }
+  // 4. A consumer that gives nothing back. The decoder runs out of buffers
+  //    to decode into and has to say so, not wait for one: the caller may be
+  //    holding a lock the consumer needs to return a frame. Without that this
+  //    step does not come back.
+  {
+    auto dec = v4l2wc::CreateDmaDecoder(config);
+    CHECK(dec != nullptr);
+    if (dec != nullptr) {
+      Result r;
+      CHECK(Pump(dec.get(), s, 0, units, /*drain=*/false, /*hold=*/units + 1,
+                 &r, false));
+      std::printf("nothing released: %zu frames of %zu, pool %u\n", r.frames,
+                  units, r.pool);
+      CHECK(r.frames > 0);
+      CHECK(r.frames <= r.pool || r.frames == units);
+    }
+  }
   // The second decoder had the first one's descriptors to reuse; what is open
   // now is what the process keeps of the device (an OpenMAX core's own, a
   // driver library's), which the first decoder already had.
