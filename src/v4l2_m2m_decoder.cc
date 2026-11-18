@@ -26,14 +26,13 @@ constexpr std::uint64_t kModifierLinear = 0;
 #define V4L2_PIX_FMT_NV12_COL128 v4l2_fourcc('N', 'C', '1', '2')
 #endif
 
-// DRM_FORMAT_MOD_BROADCOM_SAND128_COL_HEIGHT(v):
-//   fourcc_mod_code(BROADCOM=7, (v << 8) | 4). The column height goes in the
-//   param; the plane advertises SAND128 (col 0) as a wildcard, so any height
-//   matches. Kept local to avoid a libdrm build dependency.
-constexpr std::uint64_t kBroadcomVendor = 7ULL << 56;
-inline std::uint64_t Sand128ColHeight(std::uint32_t col) {
-  return kBroadcomVendor | ((static_cast<std::uint64_t>(col) << 8) | 4);
-}
+// DRM_FORMAT_MOD_BROADCOM_SAND128, fourcc_mod_code(BROADCOM=7, 4), with no
+// column height in it: the height goes in each plane's pitch. That is the
+// modifier a compositor and a KMS plane list, and with a height in it Weston
+// 14 does not find it in its list and draws luma alone (seen on a Pi 5 with
+// the stateless HEVC engine, which describes its frames the same way). Kept
+// local to avoid a libdrm build dependency.
+constexpr std::uint64_t kModifierSand128 = (7ULL << 56) | 4;
 
 int xioctl(int fd, unsigned long request, void* arg) {
   int r = 0;
@@ -311,13 +310,16 @@ bool V4l2M2mDecoder::SetupCapture() {
 
   if (capture_fourcc_ == V4L2_PIX_FMT_NV12_COL128) {
     // SAND-tiled: 128-px columns laid consecutively. The DRM framebuffer uses
-    // fourcc NV12 + the SAND128 modifier whose param is the per-column line
-    // pitch; AddFB2 strides are the image width, and the UV plane starts after
-    // the luma rows within each column.
+    // fourcc NV12 + the SAND128 modifier; each plane's pitch is the height of
+    // a column in rows, luma and chroma together, and the UV plane starts
+    // after the luma rows within each column.
     const std::uint32_t ncols = (cap_width_ + 127) / 128;
     const std::uint32_t col_lines =
         (ncols && sizeimage) ? sizeimage / (ncols * 128) : 0;
-    cap_modifier_ = Sand128ColHeight(col_lines);
+    cap_modifier_ = kModifierSand128;
+    // A driver that reports no size: a column is at least the luma rows and
+    // half as many of chroma.
+    cap_col_lines_ = col_lines != 0 ? col_lines : cap_height_ + cap_height_ / 2;
     cap_uv_offset_ = cap_height_ * 128;
     V4L2WC_LOG(V4L2WC_INFO)
         << "v4l2wc: SAND geom bpl=" << cap_stride_ << " sizeimage=" << sizeimage
@@ -513,10 +515,10 @@ bool V4l2M2mDecoder::Acquire(V4l2DmaFrame* out) {
   out->timestamp = rf.timestamp;
 
   // NV12 is two DRM planes (Y then interleaved UV) from one buffer. For the
-  // SAND modifier the AddFB2 stride is the image width (per drm_fourcc.h) and
-  // the UV plane offset is per-column; for linear it is the row stride.
+  // SAND modifier the pitch is the column height in rows and the UV plane
+  // offset is per-column; for linear it is the row stride.
   const std::uint32_t pitch =
-      (cap_modifier_ != kModifierLinear) ? cap_width_ : cap_stride_;
+      (cap_modifier_ != kModifierLinear) ? cap_col_lines_ : cap_stride_;
   out->num_planes = 2;
   out->fds[0] = fd;
   out->offsets[0] = 0;

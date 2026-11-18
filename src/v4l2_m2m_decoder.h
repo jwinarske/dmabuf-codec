@@ -106,6 +106,7 @@ class V4l2M2mDecoder : public IDmaDecoder {
   std::uint32_t cap_width_ = 0;
   std::uint32_t cap_height_ = 0;
   std::uint32_t cap_stride_ = 0;
+  std::uint32_t cap_col_lines_ = 0;  // SAND: a column's height in rows
   std::uint32_t cap_uv_offset_ = 0;  // byte offset of the UV plane
   std::uint64_t cap_modifier_ = 0;   // DRM_FORMAT_MOD_* (0 = LINEAR, else SAND)
 
