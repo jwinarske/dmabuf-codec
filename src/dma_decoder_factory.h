@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: MIT
 
 // Picks a decode engine for a stream and builds it. The V4L2 M2M engine (the
-// embedded path) is tried first and VAAPI (the desktop path) second, which is
+// embedded path) is tried first and VAAPI (the desktop path) last, which is
 // the order the webrtc wrapper used before this selection was hoisted out, so
-// a consumer that is not webrtc can choose an engine the same way.
+// a consumer that is not webrtc can choose an engine the same way. Between
+// them is OpenMAX, for a board whose decoder is behind the vendor's OpenMAX
+// core and not a V4L2 M2M node.
 #ifndef V4L2WC_SRC_DMA_DECODER_FACTORY_H_
 #define V4L2WC_SRC_DMA_DECODER_FACTORY_H_
 
@@ -25,6 +27,7 @@ struct DmaDecoderConfig {
   const char* v4l2_device = nullptr;        // default "/dev/video10"
   const char* v4l2_hevc_device = nullptr;   // stateless HEVC, default video19
   const char* vaapi_render_node = nullptr;  // default "/dev/dri/renderD128"
+  const char* omx_core_library = nullptr;   // default "libOmxCore.so"
 };
 
 // Builds a decoder for `config`, or nullptr when no engine can serve it.

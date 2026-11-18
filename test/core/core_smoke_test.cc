@@ -14,6 +14,7 @@
 
 #include "src/dma_decoder_factory.h"
 #include "src/log.h"
+#include "src/omx_decoder.h"
 #include "src/v4l2_m2m_decoder.h"
 #if V4L2WC_HAVE_VAAPI
 #include "src/vaapi_h264_decoder.h"
@@ -63,6 +64,18 @@ int main() {
       /*capture_buffer_count=*/16, /*output_buffer_size=*/1U << 20);
   CHECK(v4l2 == nullptr);
   CHECK(g_sink_calls >= 1);
+
+  // The OpenMAX engine links, and refuses a core that is not there and a codec
+  // it has no role for, without touching one.
+  g_sink_calls = 0;
+  auto omx = v4l2wc::OmxDecoder::Create(
+      "libv4l2wc-no-such-omx-core.so", V4L2_PIX_FMT_H264, /*coded_width=*/1280,
+      /*coded_height=*/720, /*extra_output_buffers=*/8);
+  CHECK(omx == nullptr);
+  CHECK(g_sink_calls >= 1);
+  auto omx_codec =
+      v4l2wc::OmxDecoder::Create(nullptr, V4L2_PIX_FMT_FWHT, 1280, 720, 8);
+  CHECK(omx_codec == nullptr);
 
 #if V4L2WC_HAVE_VAAPI
   // The VAAPI engines likewise link and refuse a render node that is not there.

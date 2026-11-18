@@ -95,11 +95,18 @@ add_library(v4l2wc_core STATIC
   src/log.cc
   src/dma_decoder.cc
   src/dma_decoder_factory.cc
+  src/omx_decoder.cc
   src/v4l2_m2m_decoder.cc
   src/v4l2_stateless_h265_decoder.cc
 )
-target_link_libraries(v4l2wc_core PUBLIC v4l2wc_parse)
+# The OpenMAX engine loads the device's core at run time, so it always builds:
+# it needs the IL headers (vendored) and the dynamic loader.
+target_link_libraries(v4l2wc_core PUBLIC v4l2wc_parse ${CMAKE_DL_LIBS})
+find_package(Threads REQUIRED)
+target_link_libraries(v4l2wc_core PUBLIC Threads::Threads)
 target_include_directories(v4l2wc_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(v4l2wc_core SYSTEM PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/third_party/openmax_il)
 target_compile_options(v4l2wc_core PRIVATE -Wall -Wextra)
 
 if(V4L2WC_VA_INCLUDE)
@@ -128,6 +135,12 @@ endif()  # V4L2WC_BUILD_TESTS (core smoke test)
 # error. Run e.g.: ./vaapi_h265_hw_test main420.hevc /dev/dri/renderD128
 option(V4L2WC_ENABLE_HW_TESTS "Build tests that need a real VAAPI/V4L2 device"
        OFF)
+if(V4L2WC_ENABLE_HW_TESTS)
+  # Needs a board with an OpenMAX core and an Annex B H.264 file. Run e.g.:
+  #   ./omx_decode_hw_test clip.h264
+  add_executable(omx_decode_hw_test test/hw/omx_decode_hw_test.cc)
+  target_link_libraries(omx_decode_hw_test PRIVATE v4l2wc_core)
+endif()
 if(V4L2WC_ENABLE_HW_TESTS AND V4L2WC_VA_INCLUDE)
   add_executable(vaapi_h265_hw_test test/hw/vaapi_h265_hw_test.cc)
   target_link_libraries(vaapi_h265_hw_test PRIVATE v4l2wc_core)
