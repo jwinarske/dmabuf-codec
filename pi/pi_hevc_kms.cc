@@ -1,13 +1,18 @@
 // SPDX-FileCopyrightText: 2026 Joel Winarske
 // SPDX-License-Identifier: MIT
 
-// Broadcom zero-copy display: decode an HEVC frame on the Pi's stateless
-// decoder (rpi-hevc-dec), import the resulting SAND128-tiled NV12/P030 dma-buf
-// straight into a KMS framebuffer, and scan it out on an overlay plane over
-// HDMI -- no CPU copy, no detile, the Tier-1 path. Proves the decoder's dma-buf
-// and its DRM fourcc+modifier are accepted by the display hardware end to end.
+// Broadcom zero-copy display: decode an HEVC clip on the Pi's stateless
+// decoder (rpi-hevc-dec), import each resulting SAND128-tiled NV12/P030
+// dma-buf straight into a KMS framebuffer, and scan it out on an overlay plane
+// over HDMI -- no CPU copy, no detile, the Tier-1 path. Proves the decoder's
+// dma-buf and its DRM fourcc+modifier are accepted by the display hardware end
+// to end, and puts moving video on the glass for someone to look at.
+//
+// The clip plays once at the given rate (the bitstream's own timing is not
+// read) and the last frame is held for two seconds.
 
 #include <fcntl.h>
+#include <time.h>
 #include <unistd.h>
 #include <xf86drm.h>
 #include <xf86drmMode.h>
@@ -15,6 +20,7 @@
 #include <cerrno>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <vector>
 
@@ -106,18 +112,79 @@ std::uint32_t PickPlane(int drm, std::uint32_t crtc_index,
   return chosen;
 }
 
+// Imports `frame` as a framebuffer with its fourcc and modifier. The GEM
+// handles are closed again at once; the framebuffer keeps the buffers. Returns
+// the framebuffer id or 0.
+std::uint32_t ImportFrame(int drm, const V4l2DmaFrame& frame) {
+  std::uint32_t handles[4] = {0, 0, 0, 0};
+  std::uint32_t pitches[4] = {0, 0, 0, 0};
+  std::uint32_t offsets[4] = {0, 0, 0, 0};
+  std::uint64_t modifiers[4] = {0, 0, 0, 0};
+  const std::uint32_t planes =
+      frame.num_planes < 4 ? frame.num_planes : 4;  // the arrays above
+  bool ok = true;
+  for (std::uint32_t p = 0; p < planes && ok; ++p) {
+    if (drmPrimeFDToHandle(drm, frame.fds[p], &handles[p]) != 0) {
+      LOGE("drmPrimeFDToHandle plane %u failed\n", p);
+      handles[p] = 0;
+      ok = false;
+      break;
+    }
+    pitches[p] = frame.pitches[p];
+    offsets[p] = frame.offsets[p];
+    modifiers[p] = frame.modifier;
+  }
+  std::uint32_t fb = 0;
+  if (ok && drmModeAddFB2WithModifiers(
+                drm, frame.width, frame.height, frame.drm_fourcc, handles,
+                pitches, offsets, modifiers, &fb, DRM_MODE_FB_MODIFIERS) != 0) {
+    LOGE("drmModeAddFB2WithModifiers failed: %s\n", std::strerror(errno));
+    fb = 0;
+  }
+  // Two planes of one buffer come back as one handle; close it once.
+  for (std::uint32_t p = 0; p < planes; ++p) {
+    if (handles[p] == 0) continue;
+    bool seen = false;
+    for (std::uint32_t q = 0; q < p; ++q)
+      seen = seen || handles[q] == handles[p];
+    if (!seen) drmCloseBufferHandle(drm, handles[p]);
+  }
+  return fb;
+}
+
+// Feeds one access unit, pumping the engine while it has no free input
+// buffer. False when the engine cannot go on.
+bool Submit(V4l2StatelessH265Decoder* decoder,
+            const std::vector<std::uint8_t>& au, std::uint64_t timestamp) {
+  for (int tries = 0; tries < 100; ++tries) {
+    const SubmitResult r =
+        decoder->SubmitBitstream(au.data(), au.size(), timestamp);
+    if (r == SubmitResult::kOk) return true;
+    if (r != SubmitResult::kTryAgain) return false;
+    if (decoder->Drive() == DriveResult::kError) return false;
+    ::usleep(1000);
+  }
+  return false;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
   if (argc < 2) {
-    LOGE("usage: %s <clip.hevc> [video_node] [card]\n", argv[0]);
+    LOGE("usage: %s <clip.hevc> [video_node] [card] [fps]\n", argv[0]);
     return 2;
   }
   const char* node = argc > 2 ? argv[2] : "/dev/video19";
   const char* card = argc > 3 ? argv[3] : "/dev/dri/card0";
+  const long fps = argc > 4 ? std::strtol(argv[4], nullptr, 10) : 30;
+  if (fps < 1 || fps > 240) {
+    LOGE("fps must be 1 to 240\n");
+    return 2;
+  }
 
-  // Decode the first frame and keep it (do not Release) so its dma-buf stays
-  // valid while the plane scans it out.
+  // Decode the first frame before touching KMS: its fourcc picks the plane.
+  // A frame on a plane is kept (not Released) so its dma-buf stays valid while
+  // it is scanned out.
   std::vector<std::uint8_t> data = ReadFile(argv[1]);
   if (data.empty()) {
     LOGE("cannot read %s\n", argv[1]);
@@ -131,12 +198,11 @@ int main(int argc, char** argv) {
   V4l2DmaFrame frame;
   bool got = false;
   std::uint64_t ts = 0;
-  for (auto& au : SplitAccessUnits(data)) {
-    decoder->SubmitBitstream(au.data(), au.size(), ts++);
-    if (decoder->Acquire(&frame)) {
-      got = true;
-      break;
-    }
+  const std::vector<std::vector<std::uint8_t>> aus = SplitAccessUnits(data);
+  std::size_t next = 0;
+  while (next < aus.size() && !got) {
+    if (!Submit(decoder.get(), aus[next++], ts++)) break;
+    got = decoder->Acquire(&frame);
   }
   if (!got) {
     LOGE("no frame decoded\n");
@@ -214,29 +280,8 @@ int main(int argc, char** argv) {
   LOGE("mode set on crtc %u (bg fb %u)\n", crtc_id, bg_fb);
 
   // Import the decoded dma-buf as a framebuffer with its fourcc + modifier.
-  std::uint32_t handles[4] = {0, 0, 0, 0};
-  std::uint32_t pitches[4] = {0, 0, 0, 0};
-  std::uint32_t offsets[4] = {0, 0, 0, 0};
-  std::uint64_t modifiers[4] = {0, 0, 0, 0};
-  for (std::uint32_t p = 0; p < frame.num_planes; ++p) {
-    std::uint32_t h = 0;
-    if (drmPrimeFDToHandle(drm, frame.fds[p], &h) != 0) {
-      LOGE("drmPrimeFDToHandle plane %u failed\n", p);
-      return 1;
-    }
-    handles[p] = h;
-    pitches[p] = frame.pitches[p];
-    offsets[p] = frame.offsets[p];
-    modifiers[p] = frame.modifier;
-  }
-  std::uint32_t video_fb = 0;
-  const int rc = drmModeAddFB2WithModifiers(
-      drm, frame.width, frame.height, frame.drm_fourcc, handles, pitches,
-      offsets, modifiers, &video_fb, DRM_MODE_FB_MODIFIERS);
-  if (rc != 0) {
-    LOGE("drmModeAddFB2WithModifiers failed: %s\n", std::strerror(errno));
-    return 1;
-  }
+  std::uint32_t video_fb = ImportFrame(drm, frame);
+  if (video_fb == 0) return 1;
   LOGE("imported decoded dma-buf as fb %u (fourcc+modifier accepted)\n",
        video_fb);
 
@@ -254,7 +299,67 @@ int main(int argc, char** argv) {
   }
   LOGE("=== SCANOUT: decoded SAND frame on plane %u, %ux%u -> %ux%u ===\n",
        plane, frame.width, frame.height, mode.hdisplay, mode.vdisplay);
-  ::sleep(4);  // hold it on screen
+
+  // The rest of the clip, one frame per period. A frame leaves the plane
+  // before its framebuffer goes and its buffer returns to the decoder.
+  const long period_ns = 1000000000L / fps;
+  timespec start{};
+  ::clock_gettime(CLOCK_MONOTONIC, &start);
+  timespec due = start;
+  unsigned shown = 1;
+  bool failed = false;
+  auto show = [&](const V4l2DmaFrame& f) {
+    due.tv_nsec += period_ns;
+    if (due.tv_nsec >= 1000000000L) {
+      due.tv_nsec -= 1000000000L;
+      ++due.tv_sec;
+    }
+    timespec now{};
+    ::clock_gettime(CLOCK_MONOTONIC, &now);
+    if (now.tv_sec > due.tv_sec ||
+        (now.tv_sec == due.tv_sec && now.tv_nsec > due.tv_nsec)) {
+      due = now;  // late: do not try to catch up
+    } else {
+      ::clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &due, nullptr);
+    }
+    const std::uint32_t fb = ImportFrame(drm, f);
+    if (fb == 0 || drmModeSetPlane(drm, plane, crtc_id, fb, 0, 0, 0,
+                                   mode.hdisplay, mode.vdisplay, 0, 0,
+                                   f.width << 16, f.height << 16) != 0) {
+      LOGE("frame %u: %s\n", shown,
+           fb == 0 ? "import failed" : std::strerror(errno));
+      if (fb != 0) drmModeRmFB(drm, fb);
+      decoder->Release(f.capture_index);
+      failed = true;
+      return;
+    }
+    drmModeRmFB(drm, video_fb);
+    decoder->Release(frame.capture_index);
+    frame = f;
+    video_fb = fb;
+    ++shown;
+  };
+  V4l2DmaFrame f;
+  while (next < aus.size() && !failed) {
+    if (!Submit(decoder.get(), aus[next++], ts++)) {
+      LOGE("decoder stopped at access unit %zu\n", next);
+      failed = true;
+      break;
+    }
+    while (!failed && decoder->Acquire(&f)) show(f);
+  }
+  if (!failed) {
+    decoder->Drain();
+    decoder->Drive();
+    while (!failed && decoder->Acquire(&f)) show(f);
+  }
+  timespec end{};
+  ::clock_gettime(CLOCK_MONOTONIC, &end);
+  const double secs = static_cast<double>(end.tv_sec - start.tv_sec) +
+                      static_cast<double>(end.tv_nsec - start.tv_nsec) / 1e9;
+  LOGE("showed %u frames of %zu access units in %.2f s\n", shown, aus.size(),
+       secs);
+  if (!failed) ::sleep(2);  // hold the last frame
 
   drmModeRmFB(drm, video_fb);
   drmModeRmFB(drm, bg_fb);
@@ -262,6 +367,7 @@ int main(int argc, char** argv) {
   drmModeFreeConnector(conn);
   drmModeFreeResources(res);
   ::close(drm);
+  if (failed) return 1;
   LOGE("done (zero-copy Tier-1 scanout succeeded)\n");
   return 0;
 }
