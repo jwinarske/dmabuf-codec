@@ -5,9 +5,9 @@
 // surface (SubmitBitstream / Acquire / Release) one access unit at a time,
 // maps each Acquired dma-buf, and reconstructs planar I420 / I010 for a
 // byte-exact compare against an ffmpeg software reference. It reads the frame's
-// DRM fourcc and SAND128 modifier to detile (and, for P030, unpack the packed
-// 10-bit samples), so no tiling geometry is hard-coded. Cross-built for aarch64
-// with emb; run on the Pi.
+// DRM fourcc and each plane's pitch (its column height) to detile (and, for
+// P030, unpack the packed 10-bit samples), so no tiling geometry is hard-coded.
+// Cross-built for aarch64 with emb; run on the Pi.
 
 #include <fcntl.h>
 #include <sys/mman.h>
@@ -130,15 +130,22 @@ int main(int argc, char** argv) {
     auto* uv = static_cast<std::uint8_t*>(
         mmap(nullptr, st1.st_size, PROT_READ, MAP_SHARED, f.fds[1], 0));
     if (y != MAP_FAILED && uv != MAP_FAILED) {
-      // Read the tile column height from the SAND128 modifier parameter
-      // (drm_fourcc.h fourcc_mod_broadcom_param); chroma is half for 4:2:0.
-      // Bit depth comes from the DRM fourcc (P030 = 10-bit packed).
-      const std::uint32_t stride = f.pitches[0];
-      const std::uint32_t luma_col_h =
-          static_cast<std::uint32_t>((f.modifier >> 8) & 0xffffffffffffULL);
-      const std::uint32_t col_h = luma_col_h ? luma_col_h : h;
-      const std::uint32_t ccol_h = col_h / 2;
+      // The height of a plane's columns is its pitch: the engine gives the
+      // SAND128 modifier bare (see v4l2_stateless_h265_decoder.cc). Bit depth
+      // comes from the DRM fourcc (P030 = 10-bit packed).
+      const std::uint32_t col_h = f.pitches[0];
+      const std::uint32_t ccol_h = f.pitches[1];
+      if (col_h < h || ccol_h < h / 2) {
+        std::fprintf(stderr, "pitches %u/%u are not column heights for %ux%u\n",
+                     col_h, ccol_h, w, h);
+        munmap(y, st0.st_size);
+        munmap(uv, st1.st_size);
+        dec->Release(f.capture_index);
+        return;
+      }
       const bool ten = f.drm_fourcc == 0x30333050;  // DRM_FORMAT_P030
+      // Bytes in a raster row of packed 10-bit samples: three to a word.
+      const std::uint32_t stride = ((w + 2) / 3) * 4;
       std::vector<std::uint8_t> yout, uout, vout;
       if (ten) {
         // Packed SAND 10-bit: detile the packed bytes, then unpack 3-per-4 into
