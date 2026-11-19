@@ -155,6 +155,20 @@ if(V4L2WC_ENABLE_HW_TESTS)
   #   ./dma_decode_hw_test h264 clip.h264
   add_executable(dma_decode_hw_test test/hw/dma_decode_hw_test.cc)
   target_link_libraries(dma_decode_hw_test PRIVATE v4l2wc_core)
+
+  # The same frames as a display controller reads them: on a KMS plane, read
+  # back through a writeback connector and compared with a software decode.
+  # Needs libdrm to build and a card with a writeback connector to run:
+  #   ./kms_writeback_hw_test hevc clip.h265 ref.yuv 640x360
+  find_package(PkgConfig QUIET)
+  if(PkgConfig_FOUND)
+    pkg_check_modules(V4L2WC_LIBDRM IMPORTED_TARGET libdrm)
+  endif()
+  if(TARGET PkgConfig::V4L2WC_LIBDRM)
+    add_executable(kms_writeback_hw_test test/hw/kms_writeback_hw_test.cc)
+    target_link_libraries(kms_writeback_hw_test
+      PRIVATE v4l2wc_core PkgConfig::V4L2WC_LIBDRM)
+  endif()
 endif()
 if(V4L2WC_ENABLE_HW_TESTS AND V4L2WC_VA_INCLUDE)
   add_executable(vaapi_h265_hw_test test/hw/vaapi_h265_hw_test.cc)

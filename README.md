@@ -114,6 +114,22 @@ meson setup build && meson test -C build
   Built only when the compiler can produce libFuzzer binaries; the unit tests
   build with any compiler.
 
+On a device, built with `-Dhw_tests=true` (Meson) or
+`-DV4L2WC_ENABLE_HW_TESTS=ON` (CMake) and run by hand with a clip:
+
+- **`dma_decode_hw_test`** — whichever engine the factory picks: every frame,
+  in order, through a flush, a second decoder, and a consumer that returns
+  nothing.
+- **`kms_writeback_hw_test`** — the same frames as a display controller reads
+  them. A frame goes on a KMS overlay plane as the engine described it, a
+  writeback connector hands back what was composed, and that is compared with
+  a software decode. It is what tells a wrong pitch, offset or modifier from a
+  right one; the decode test reads no samples. Needs libdrm and a card with a
+  writeback connector that no compositor holds. On a Pi 5 (stateless HEVC,
+  SAND columns, a buffer per plane and one buffer): mean luma error 0.35 and
+  chroma 0.19 of 255 on a 640x360 test pattern, against 3.7 and up for a frame
+  described wrong.
+
 Not yet, despite the directories existing:
 
 - **visl** — a draw-the-controls correctness oracle (stateless). `test/visl/`
