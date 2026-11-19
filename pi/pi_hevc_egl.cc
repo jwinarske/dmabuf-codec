@@ -501,12 +501,15 @@ int main(int argc, char** argv) {
     LOGE("mmap of decoded planes failed\n");
     return 1;
   }
-  const std::uint32_t col_h =
-      static_cast<std::uint32_t>((frame.modifier >> 8) & 0xffffffffffffULL);
-  const std::uint32_t lch = col_h ? col_h : H;
+  // The height of a plane's columns is its pitch; the modifier carries none.
+  if (frame.pitches[0] < H || frame.pitches[1] < H / 2) {
+    LOGE("pitches %u/%u are not column heights\n", frame.pitches[0],
+         frame.pitches[1]);
+    return 1;
+  }
   std::vector<std::uint8_t> yr, uvr;
-  Detile(y_map, W, H, lch, &yr);
-  Detile(uv_map, W, H / 2, lch / 2, &uvr);
+  Detile(y_map, W, H, frame.pitches[0], &yr);
+  Detile(uv_map, W, H / 2, frame.pitches[1], &uvr);
 
   // --- sample #1: the decoder's SAND128 dma-buf, straight in ---
   const std::vector<std::uint8_t> px_sand =
