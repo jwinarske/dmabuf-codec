@@ -136,14 +136,25 @@ if build_tests
   )
 endif
 
-# Not registered as a test: it needs a decoder on the machine and a clip.
+# Not registered as tests: they need a decoder on the machine and a clip.
 #   dma_decode_hw_test h264|hevc clip
+#   kms_writeback_hw_test h264|hevc clip ref.yuv WIDTHxHEIGHT
+# The second also needs a card with a writeback connector, and libdrm to
+# build; it is left out where libdrm is not found.
 if get_option('hw_tests')
   executable(
     'dma_decode_hw_test',
     'test/hw/dma_decode_hw_test.cc',
     dependencies : dmabuf_codec_dep,
   )
+  libdrm_dep = dependency('libdrm', required : false)
+  if libdrm_dep.found()
+    executable(
+      'kms_writeback_hw_test',
+      'test/hw/kms_writeback_hw_test.cc',
+      dependencies : [dmabuf_codec_dep, libdrm_dep],
+    )
+  endif
 endif
 
 summary(
