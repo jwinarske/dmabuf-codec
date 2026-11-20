@@ -138,6 +138,11 @@ bool Pump(v4l2wc::IDmaDecoder* dec, const Stream& s, std::size_t from,
             static_cast<unsigned long long>(f.modifier), f.fds[0], f.num_planes,
             f.offsets[0], f.offsets[1], f.pitches[0],
             static_cast<unsigned long long>(f.timestamp));
+        // H.273 codes as the engine reports them; 2 is "unspecified".
+        std::printf(
+            "first frame color: primaries %u transfer %u matrix %u range %s\n",
+            f.colour_primaries, f.transfer_characteristics,
+            f.matrix_coefficients, f.video_full_range ? "full" : "limited");
         CHECK(f.fds[0] >= 0);
         if (g_one_buffer) {
           for (std::uint32_t p = 1; p < f.num_planes; ++p) {

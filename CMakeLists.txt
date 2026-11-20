@@ -38,6 +38,7 @@ add_library(v4l2wc_parse STATIC
   parse/h265/pps.cc
   parse/h265/scaling_list.cc
   parse/h265/slice_header.cc
+  parse/sps_color.cc
 )
 target_include_directories(v4l2wc_parse PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_options(v4l2wc_parse PRIVATE -Wall -Wextra)
@@ -78,6 +79,9 @@ add_test(NAME h265_scaling_list_test COMMAND h265_scaling_list_test)
 add_executable(h265_slice_header_test test/parse/h265_slice_header_test.cc)
 target_link_libraries(h265_slice_header_test PRIVATE v4l2wc_parse)
 add_test(NAME h265_slice_header_test COMMAND h265_slice_header_test)
+add_executable(sps_color_test test/parse/sps_color_test.cc)
+target_link_libraries(sps_color_test PRIVATE v4l2wc_parse)
+add_test(NAME sps_color_test COMMAND sps_color_test)
 endif()  # V4L2WC_BUILD_TESTS (parser tests)
 
 # ---- webrtc-free decode core -----------------------------------------------
@@ -225,8 +229,11 @@ if(V4L2WC_BUILD_TESTS AND V4L2WC_HAVE_LIBFUZZER)
     parse/h265/nal.cc parse/h265/sps.cc parse/h265/scaling_list.cc
     parse/h265/slice_header.cc)
   set(_fuzz_h265_scaling_list_sources parse/h265/scaling_list.cc)
+  set(_fuzz_sps_color_sources
+    parse/sps_color.cc parse/h264/sps.cc parse/h265/sps.cc
+    parse/h265/scaling_list.cc)
   foreach(target nal sps pps slice_header h265_nal h265_sps h265_pps
-                 h265_slice_header h265_scaling_list)
+                 h265_slice_header h265_scaling_list sps_color)
     add_executable(${target}_fuzzer test/fuzz/${target}_fuzzer.cc
       ${_fuzz_${target}_sources})
     target_include_directories(${target}_fuzzer PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})

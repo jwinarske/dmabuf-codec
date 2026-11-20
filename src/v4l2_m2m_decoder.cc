@@ -77,6 +77,10 @@ std::unique_ptr<V4l2M2mDecoder> V4l2M2mDecoder::Create(
 
   std::unique_ptr<V4l2M2mDecoder> dec(new V4l2M2mDecoder());
   dec->codec_fourcc_ = codec_fourcc;
+  dec->watch_color_ =
+      codec_fourcc == V4L2_PIX_FMT_H264 || codec_fourcc == V4L2_PIX_FMT_HEVC;
+  dec->color_codec_ =
+      codec_fourcc == V4L2_PIX_FMT_HEVC ? SpsCodec::kH265 : SpsCodec::kH264;
   dec->capture_fourcc_ = capture_fourcc;
   dec->capture_count_req_ = capture_buffer_count;
 
@@ -274,6 +278,9 @@ SubmitResult V4l2M2mDecoder::SubmitBitstream(const std::uint8_t* data,
     V4L2WC_LOG(V4L2WC_ERROR)
         << "v4l2wc: QBUF OUTPUT failed: " << std::strerror(errno);
     return SubmitResult::kError;
+  }
+  if (watch_color_) {
+    FindSpsColor(color_codec_, data, size, &color_);
   }
   return SubmitResult::kOk;
 }
@@ -513,6 +520,10 @@ bool V4l2M2mDecoder::Acquire(V4l2DmaFrame* out) {
   out->drm_fourcc = V4L2_PIX_FMT_NV12;
   out->modifier = cap_modifier_;
   out->timestamp = rf.timestamp;
+  out->colour_primaries = color_.colour_primaries;
+  out->transfer_characteristics = color_.transfer_characteristics;
+  out->matrix_coefficients = color_.matrix_coeffs;
+  out->video_full_range = color_.video_full_range_flag;
 
   // NV12 is two DRM planes (Y then interleaved UV) from one buffer. For the
   // SAND modifier the pitch is the column height in rows and the UV plane
