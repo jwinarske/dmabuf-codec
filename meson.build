@@ -34,6 +34,7 @@ parse_lib = static_library(
     'parse/h265/scaling_list.cc',
     'parse/h265/slice_header.cc',
     'parse/h265/sps.cc',
+    'parse/sps_color.cc',
   ),
   include_directories : inc,
 )
@@ -115,6 +116,7 @@ if build_tests
     'h265_scaling_list',
     'h265_slice_header',
     'h265_sps',
+    'sps_color',
   ]
     test(
       t + '_test',

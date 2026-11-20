@@ -20,6 +20,7 @@
 #include <string>
 #include <vector>
 
+#include "parse/sps_color.h"
 #include "src/log.h"
 
 namespace v4l2wc {
@@ -121,6 +122,13 @@ struct OmxDecoder::State {
     Owner owner = Owner::kIdle;
     std::uint64_t timestamp = 0;
   };
+  // The color the stream's last SPS said (H.264 and HEVC), taken from the
+  // bitstream rather than asked of the component. Read as access units go in;
+  // `color` is under mu. A picture still in the component when a new SPS
+  // arrives is given the new one's.
+  bool watch_color = false;
+  SpsCodec color_codec = SpsCodec::kH264;
+  SpsColor color;
   // The core, loaded at run time.
   void* lib = nullptr;
   OMX_ERRORTYPE (*init)() = nullptr;
@@ -515,6 +523,10 @@ std::unique_ptr<OmxDecoder> OmxDecoder::Create(
   std::unique_ptr<OmxDecoder> dec(new OmxDecoder());
   State* s = dec->s_.get();
   s->extra_outputs = extra_output_buffers;
+  s->watch_color =
+      codec_fourcc == V4L2_PIX_FMT_H264 || codec_fourcc == V4L2_PIX_FMT_HEVC;
+  s->color_codec =
+      codec_fourcc == V4L2_PIX_FMT_HEVC ? SpsCodec::kH265 : SpsCodec::kH264;
 
   // RTLD_GLOBAL: the core dlopens its components, which resolve symbols
   // against it. Never unloaded: the components start threads of their own.
@@ -769,6 +781,11 @@ SubmitResult OmxDecoder::SubmitBitstream(const std::uint8_t* data,
     s->first_sent = true;
     s->first_submit = std::chrono::steady_clock::now();
   }
+  SpsColor color;
+  if (s->watch_color && FindSpsColor(s->color_codec, data, size, &color)) {
+    std::lock_guard<std::mutex> lock(s->mu);  // Acquire reads it under mu
+    s->color = color;
+  }
   return SubmitResult::kOk;
 }
 
@@ -855,6 +872,10 @@ bool OmxDecoder::Acquire(V4l2DmaFrame* out) {
   out->drm_fourcc = V4L2_PIX_FMT_NV12;  // the same fourcc as DRM_FORMAT_NV12
   out->modifier = 0;                    // DRM_FORMAT_MOD_LINEAR
   out->timestamp = b.timestamp;
+  out->colour_primaries = s->color.colour_primaries;
+  out->transfer_characteristics = s->color.transfer_characteristics;
+  out->matrix_coefficients = s->color.matrix_coeffs;
+  out->video_full_range = s->color.video_full_range_flag;
   out->num_planes = 2;
   out->fds[0] = b.fd;
   out->offsets[0] = b.offset;

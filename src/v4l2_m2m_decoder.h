@@ -25,6 +25,7 @@
 #include <memory>
 #include <vector>
 
+#include "parse/sps_color.h"
 #include "src/dma_decoder.h"  // V4l2DmaFrame, SubmitResult, IDmaDecoder
 
 namespace v4l2wc {
@@ -121,6 +122,14 @@ class V4l2M2mDecoder : public IDmaDecoder {
     std::uint64_t timestamp = 0;
   };
   std::deque<ReadyFrame> ready_;
+
+  // The color the stream's last SPS said (H.264 and HEVC), taken from the
+  // bitstream rather than from the driver's CAPTURE format. Read as access
+  // units go in, so a picture still in the decoder when a new SPS arrives is
+  // given the new one's color.
+  bool watch_color_ = false;
+  SpsCodec color_codec_ = SpsCodec::kH264;
+  SpsColor color_;
 };
 
 }  // namespace v4l2wc
