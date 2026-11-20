@@ -36,7 +36,7 @@ struct V4l2DmaFrame {
   std::uint64_t timestamp = 0;  // opaque passthrough: a PTS for HLS, an RTP ts
                                 // for WebRTC; the engine never interprets it
 
-  // Colorimetry from the bitstream VUI (H.265 Table E.3/E.4/E.5), or the
+  // Colorimetry from the bitstream VUI (H.264/H.265 Annex E), or the
   // "unspecified" default (2) when the stream omits it. A sink maps these onto
   // its color model so YUV converts to RGB correctly; a YUV frame with the
   // wrong matrix is the classic washed-out / oversaturated video.

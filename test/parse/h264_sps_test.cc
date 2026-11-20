@@ -54,6 +54,61 @@ int main() {
     }
   }
 
+  // Real SPSs from libx264 (High, 64x64) with a VUI color description. Fed as
+  // Annex B so the emulation-prevention bytes are removed as in a decoder.
+  const auto parse_nal = [](std::vector<uint8_t> nal, size_t keep, Sps* sps) {
+    std::vector<uint8_t> stream = {0x00, 0x00, 0x00, 0x01};
+    stream.insert(stream.end(), nal.begin(), nal.begin() + keep);
+    auto nals = ParseAnnexB(stream.data(), stream.size());
+    return nals.size() == 1 &&
+           ParseSps(nals[0].rbsp.data(), nals[0].rbsp.size(), sps);
+  };
+  // colorprim/transfer/colormatrix=bt709, limited range.
+  const std::vector<uint8_t> bt709 = {0x67, 0x64, 0x00, 0x0a, 0xac, 0xd9, 0x44,
+                                      0x26, 0xc0, 0x5a, 0x80, 0x80, 0x80, 0xa0,
+                                      0x00, 0x00, 0x03, 0x00, 0x20, 0x00, 0x00,
+                                      0x06, 0x41, 0xe2, 0x44, 0xb2, 0xc0};
+  {
+    Sps sps;
+    CHECK(parse_nal(bt709, bt709.size(), &sps));
+    CHECK(sps.width == 64 && sps.height == 64);
+    CHECK(sps.colour_description_present_flag);
+    CHECK(sps.colour_primaries == 1);
+    CHECK(sps.transfer_characteristics == 1);
+    CHECK(sps.matrix_coeffs == 1);
+    CHECK(!sps.video_full_range_flag);
+  }
+  // colorprim/transfer/colormatrix=bt470bg, full range.
+  {
+    std::vector<uint8_t> bt601 = bt709;
+    bt601[9] = 0x5b;
+    bt601[10] = bt601[11] = bt601[12] = 0x82;
+    Sps sps;
+    CHECK(parse_nal(bt601, bt601.size(), &sps));
+    CHECK(sps.width == 64 && sps.height == 64);
+    CHECK(sps.colour_primaries == 5);
+    CHECK(sps.transfer_characteristics == 5);
+    CHECK(sps.matrix_coeffs == 5);
+    CHECK(sps.video_full_range_flag);
+  }
+  // A VUI cut off inside the color description keeps the geometry and leaves
+  // the color unspecified, never half written.
+  {
+    Sps sps;
+    CHECK(parse_nal(bt709, 11, &sps));
+    CHECK(sps.width == 64 && sps.height == 64);
+    CHECK(!sps.colour_description_present_flag);
+    CHECK(sps.matrix_coeffs == 2);
+    CHECK(!sps.video_full_range_flag);
+  }
+  // No VUI: unspecified.
+  {
+    Sps sps;
+    CHECK(ParseSps(rbsp.data(), rbsp.size(), &sps));
+    CHECK(!sps.colour_description_present_flag);
+    CHECK(sps.matrix_coeffs == 2);
+  }
+
   // Malformed / truncated input must fail cleanly, never crash.
   {
     Sps sps;
