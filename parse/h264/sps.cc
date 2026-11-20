@@ -56,6 +56,53 @@ bool SkipScalingList(BitReader* br, uint32_t count) {
   return true;
 }
 
+// The head of vui_parameters (clause E.1.1), up to the color description.
+// Nothing after it is needed, so the rest of the VUI is not read.
+bool ParseVuiColor(BitReader* br, Sps* sps) {
+  bool flag = false;
+  if (!br->ReadFlag(&flag)) {  // aspect_ratio_info_present_flag
+    return false;
+  }
+  if (flag) {
+    uint32_t aspect_ratio_idc = 0;
+    if (!br->ReadBits(8, &aspect_ratio_idc)) {
+      return false;
+    }
+    if (aspect_ratio_idc == 255 && !br->SkipBits(32)) {  // Extended_SAR
+      return false;
+    }
+  }
+  if (!br->ReadFlag(&flag)) {  // overscan_info_present_flag
+    return false;
+  }
+  if (flag && !br->SkipBits(1)) {  // overscan_appropriate_flag
+    return false;
+  }
+  if (!br->ReadFlag(&flag)) {  // video_signal_type_present_flag
+    return false;
+  }
+  if (!flag) {
+    return true;
+  }
+  bool full_range = false;
+  bool described = false;
+  if (!br->SkipBits(3) ||  // video_format
+      !br->ReadFlag(&full_range) || !br->ReadFlag(&described)) {
+    return false;
+  }
+  uint32_t cp = 2, tc = 2, mc = 2;
+  if (described && (!br->ReadBits(8, &cp) || !br->ReadBits(8, &tc) ||
+                    !br->ReadBits(8, &mc))) {
+    return false;
+  }
+  sps->video_full_range_flag = full_range;
+  sps->colour_description_present_flag = described;
+  sps->colour_primaries = static_cast<uint8_t>(cp);
+  sps->transfer_characteristics = static_cast<uint8_t>(tc);
+  sps->matrix_coeffs = static_cast<uint8_t>(mc);
+  return true;
+}
+
 }  // namespace
 
 bool ParseSps(const uint8_t* rbsp, size_t size, Sps* out) {
@@ -233,6 +280,14 @@ bool ParseSps(const uint8_t* rbsp, size_t size, Sps* out) {
   }
   sps.width = width;
   sps.height = height;
+
+  // A VUI that is cut short leaves the color "unspecified" rather than failing
+  // an SPS whose geometry already parsed; the fields are written only after
+  // the whole color description has been read.
+  bool vui_present = false;
+  if (br.ReadFlag(&vui_present) && vui_present) {
+    (void)ParseVuiColor(&br, &sps);
+  }
   *out = sps;
   return true;
 }

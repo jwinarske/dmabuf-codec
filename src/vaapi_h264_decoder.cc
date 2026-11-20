@@ -445,6 +445,11 @@ bool VaapiH264Decoder::Acquire(V4l2DmaFrame* out) {
     out->pitches[p] = s.pitches[p];
   }
   out->timestamp = s.timestamp;
+  // Colorimetry from the active SPS VUI (constant across the coded sequence).
+  out->colour_primaries = sps_.colour_primaries;
+  out->transfer_characteristics = sps_.transfer_characteristics;
+  out->matrix_coefficients = sps_.matrix_coeffs;
+  out->video_full_range = sps_.video_full_range_flag;
   have_ready_ = false;
   return true;
 }

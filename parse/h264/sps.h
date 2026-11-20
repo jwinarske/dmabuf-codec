@@ -38,6 +38,16 @@ struct Sps {
   bool direct_8x8_inference_flag = false;
   bool mb_adaptive_frame_field_flag = false;
   bool separate_colour_plane_flag = false;
+
+  // Colorimetry from the VUI video_signal_type (clause E.1.1). The codes are
+  // H.264 Tables E-3 (colour_primaries), E-4 (transfer) and E-5
+  // (matrix_coefficients); 2 is "unspecified" and is the default when the VUI
+  // or its color description is absent.
+  bool colour_description_present_flag = false;
+  uint8_t colour_primaries = 2;
+  uint8_t transfer_characteristics = 2;
+  uint8_t matrix_coeffs = 2;
+  bool video_full_range_flag = false;
 };
 
 // Largest coded dimension accepted; anything larger is treated as malformed.
