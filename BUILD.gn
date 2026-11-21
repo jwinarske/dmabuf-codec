@@ -29,15 +29,9 @@ config("v4l2wc_private_config") {
   ]
 }
 
-# Public C entry + the decoder/factory. Hidden visibility: only the C entry
-# points are exported by the absorbing libwebrtc.so (CI symbol audit).
-#
-# The stateful decoder drives a V4L2 M2M device directly (decode + VIDIOC_EXPBUF
-# to DMA-BUF) and wraps each decoded NV12 buffer as the fork's
-# LwNativeVideoFrameBuffer. The pure-logic parse/ layer (built and fuzzed
-# standalone via CMakeLists.txt) is compiled in for SPS-based dimension sizing.
-source_set("v4l2wc") {
-  public = [ "include/v4l2wc/v4l2wc.h" ]
+# The H.264 and H.265 readers are each a source_set of their own: both have an
+# sps.cc, and one target cannot hold two sources with the same object name.
+source_set("v4l2wc_parse_h264") {
   sources = [
     "parse/bit_reader.h",
     "parse/h264/nal.cc",
@@ -48,10 +42,31 @@ source_set("v4l2wc") {
     "parse/h264/slice_header.h",
     "parse/h264/sps.cc",
     "parse/h264/sps.h",
+  ]
+  include_dirs = [ "." ]
+}
+
+source_set("v4l2wc_parse_h265") {
+  sources = [
+    "parse/bit_reader.h",
     "parse/h265/scaling_list.cc",
     "parse/h265/scaling_list.h",
     "parse/h265/sps.cc",
     "parse/h265/sps.h",
+  ]
+  include_dirs = [ "." ]
+}
+
+# Public C entry + the decoder/factory. Hidden visibility: only the C entry
+# points are exported by the absorbing libwebrtc.so (CI symbol audit).
+#
+# The stateful decoder drives a V4L2 M2M device directly (decode + VIDIOC_EXPBUF
+# to DMA-BUF) and wraps each decoded NV12 buffer as the fork's
+# LwNativeVideoFrameBuffer. The pure-logic parse/ layer (built and fuzzed
+# standalone via CMakeLists.txt) is compiled in for SPS-based dimension sizing.
+source_set("v4l2wc") {
+  public = [ "include/v4l2wc/v4l2wc.h" ]
+  sources = [
     "parse/sps_color.cc",
     "parse/sps_color.h",
     "src/dma_decoder.cc",
@@ -83,6 +98,8 @@ source_set("v4l2wc") {
   include_dirs = [ "." ]  # for "parse/..." and "src/..." includes
 
   deps = [
+    ":v4l2wc_parse_h264",
+    ":v4l2wc_parse_h265",
     "//api:make_ref_counted",
     "//api/environment:environment",
     "//api/video:encoded_image",
