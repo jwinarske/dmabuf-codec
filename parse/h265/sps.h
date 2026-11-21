@@ -85,6 +85,10 @@ struct Sps {
   uint32_t pic_height_in_luma_samples = 0;  // coded (uncropped)
   uint32_t width = 0;                       // conformance-cropped width
   uint32_t height = 0;                      // conformance-cropped height
+  // Where the conformance window starts in the coded picture, in luma
+  // samples.
+  uint32_t crop_left = 0;
+  uint32_t crop_top = 0;
 
   uint32_t bit_depth_luma = 8;              // bit_depth_luma_minus8 + 8
   uint32_t bit_depth_chroma = 8;            // bit_depth_chroma_minus8 + 8

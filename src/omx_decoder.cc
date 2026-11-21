@@ -882,6 +882,19 @@ bool OmxDecoder::Acquire(V4l2DmaFrame* out) {
   out->capture_index = index;
   out->width = s->width;
   out->height = s->height;
+  // A crop that does not start at the top left is taken from the stream's
+  // SPS. Qualcomm's component gives the rectangle's right and bottom edges
+  // for its size, and for some offsets a left of 0: cropped 32 left and 8
+  // top, it said 672x376 at 0,8 for a 640x368 picture at 32,8.
+  const SpsColor& c = s->color;
+  if ((c.crop_left != 0 || c.crop_top != 0) && c.width > 0 && c.height > 0 &&
+      std::uint64_t{c.crop_left} + c.width <= s->stride &&
+      std::uint64_t{c.crop_top} + c.height <= s->slice_height) {
+    out->width = c.width;
+    out->height = c.height;
+    out->crop_x = c.crop_left;
+    out->crop_y = c.crop_top;
+  }
   out->drm_fourcc = V4L2_PIX_FMT_NV12;  // the same fourcc as DRM_FORMAT_NV12
   out->modifier = 0;                    // DRM_FORMAT_MOD_LINEAR
   out->timestamp = b.timestamp;

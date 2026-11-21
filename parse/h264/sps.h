@@ -27,6 +27,9 @@ struct Sps {
   bool frame_mbs_only_flag = true;
   uint32_t width = 0;   // cropped luma width in pixels
   uint32_t height = 0;  // cropped luma height in pixels
+  // Where the cropped picture starts in the coded one, in luma pixels.
+  uint32_t crop_left = 0;
+  uint32_t crop_top = 0;
 
   // Coded (uncropped) macroblock geometry, and the picture-order and reference
   // fields a hardware decoder needs to build its picture parameters and to

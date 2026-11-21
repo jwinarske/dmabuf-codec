@@ -25,8 +25,14 @@ struct V4l2DmaFrame {
   V4l2DmaFrame();
 
   std::uint32_t capture_index = 0;
+  // The picture: its size, and where it starts in the buffer, which is the
+  // coded picture and may be larger. Most streams crop only at the right
+  // and bottom, so crop_x and crop_y are 0. Not folded into the offsets:
+  // a tiled or column layout cannot start mid-tile.
   std::uint32_t width = 0;
   std::uint32_t height = 0;
+  std::uint32_t crop_x = 0;
+  std::uint32_t crop_y = 0;
   std::uint32_t drm_fourcc = 0;
   std::uint64_t modifier = 0;
   std::uint32_t num_planes = 0;

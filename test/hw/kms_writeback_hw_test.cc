@@ -407,13 +407,16 @@ void Add(drmModeAtomicReq* req, int fd, std::uint32_t object,
   }
 }
 
+// Shows the width x height rectangle of `fb` that starts at (src_x, src_y) at
+// the top left of the output.
 void AddPlane(drmModeAtomicReq* req, const Output& out, std::uint32_t plane,
-              std::uint32_t fb, std::uint32_t width, std::uint32_t height) {
+              std::uint32_t fb, std::uint32_t width, std::uint32_t height,
+              std::uint32_t src_x = 0, std::uint32_t src_y = 0) {
   const auto P = DRM_MODE_OBJECT_PLANE;
   Add(req, out.fd, plane, P, "FB_ID", fb);
   Add(req, out.fd, plane, P, "CRTC_ID", out.crtc);
-  Add(req, out.fd, plane, P, "SRC_X", 0);
-  Add(req, out.fd, plane, P, "SRC_Y", 0);
+  Add(req, out.fd, plane, P, "SRC_X", static_cast<std::uint64_t>(src_x) << 16);
+  Add(req, out.fd, plane, P, "SRC_Y", static_cast<std::uint64_t>(src_y) << 16);
   Add(req, out.fd, plane, P, "SRC_W", static_cast<std::uint64_t>(width) << 16);
   Add(req, out.fd, plane, P, "SRC_H", static_cast<std::uint64_t>(height) << 16);
   Add(req, out.fd, plane, P, "CRTC_X", 0);
@@ -593,9 +596,11 @@ bool ShowAndCompare(Output* out, const v4l2wc::V4l2DmaFrame& f,
     modifiers[p] = f.modifier;
   }
   std::uint32_t fb = 0;
-  if (drmModeAddFB2WithModifiers(fd, f.width, f.height, f.drm_fourcc, handles,
-                                 pitches, offsets, modifiers, &fb,
-                                 DRM_MODE_FB_MODIFIERS) != 0) {
+  // The framebuffer reaches the picture's bottom right corner; the plane
+  // shows the picture from where it starts.
+  if (drmModeAddFB2WithModifiers(fd, f.crop_x + f.width, f.crop_y + f.height,
+                                 f.drm_fourcc, handles, pitches, offsets,
+                                 modifiers, &fb, DRM_MODE_FB_MODIFIERS) != 0) {
     std::printf("frame %zu: no framebuffer of it: %s\n", number,
                 std::strerror(errno));
     return false;
@@ -629,7 +634,7 @@ bool ShowAndCompare(Output* out, const v4l2wc::V4l2DmaFrame& f,
   Add(req, fd, out->crtc, R, "ACTIVE", 1);
   AddPlane(req, *out, out->primary, out->background.fb, out->width,
            out->height);
-  AddPlane(req, *out, out->overlay, fb, f.width, f.height);
+  AddPlane(req, *out, out->overlay, fb, f.width, f.height, f.crop_x, f.crop_y);
   if (enc_prop.id != 0) {
     drmModeAtomicAddProperty(req, out->overlay, enc_prop.id, encoding);
   } else {
@@ -861,9 +866,10 @@ int main(int argc, char** argv) {
       if (frames == wanted[checked]) {
         if (!told) {
           std::printf(
-              "%ux%u %.4s modifier 0x%llx, %u plane(s) in %s, pitches %u/%u, "
-              "offsets %u/%u\n",
-              f.width, f.height, reinterpret_cast<const char*>(&f.drm_fourcc),
+              "%ux%u at %u,%u %.4s modifier 0x%llx, %u plane(s) in %s, "
+              "pitches %u/%u, offsets %u/%u\n",
+              f.width, f.height, f.crop_x, f.crop_y,
+              reinterpret_cast<const char*>(&f.drm_fourcc),
               static_cast<unsigned long long>(f.modifier), f.num_planes,
               f.num_planes > 1 && f.fds[1] != f.fds[0] ? "a buffer each"
                                                        : "one buffer",

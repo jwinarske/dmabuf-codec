@@ -720,16 +720,22 @@ bool ParseSps(const uint8_t* rbsp, size_t size, Sps* out) {
         break;
     }
   }
-  const uint64_t crop_x =
-      static_cast<uint64_t>(conf_win_left + conf_win_right) * sub_width_c;
-  const uint64_t crop_y =
-      static_cast<uint64_t>(conf_win_top + conf_win_bottom) * sub_height_c;
+  // Summed in 64 bits: each offset is read from the stream.
+  const uint64_t crop_x = (static_cast<uint64_t>(conf_win_left) +
+                           static_cast<uint64_t>(conf_win_right)) *
+                          sub_width_c;
+  const uint64_t crop_y = (static_cast<uint64_t>(conf_win_top) +
+                           static_cast<uint64_t>(conf_win_bottom)) *
+                          sub_height_c;
   if (crop_x >= sps.pic_width_in_luma_samples ||
       crop_y >= sps.pic_height_in_luma_samples) {
     return false;  // crop would meet or exceed the coded size
   }
   sps.width = sps.pic_width_in_luma_samples - static_cast<uint32_t>(crop_x);
   sps.height = sps.pic_height_in_luma_samples - static_cast<uint32_t>(crop_y);
+  // Less than crop_x and crop_y, so they fit.
+  sps.crop_left = conf_win_left * sub_width_c;
+  sps.crop_top = conf_win_top * sub_height_c;
 
   *out = sps;
   return true;

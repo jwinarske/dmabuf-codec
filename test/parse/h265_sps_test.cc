@@ -220,6 +220,7 @@ int main() {
     }
     CHECK(sps.width == v.width);
     CHECK(sps.height == v.height);
+    CHECK(sps.crop_left == 0 && sps.crop_top == 0);  // none crops left or top
     CHECK(sps.chroma_format_idc == v.chroma);
     CHECK(sps.bit_depth_luma == 8);
     CHECK(sps.bit_depth_chroma == 8);
@@ -233,6 +234,23 @@ int main() {
     CHECK(sps.pic_height_in_ctbs == (sps.pic_height_in_luma_samples + 63) / 64);
     CHECK(sps.pic_size_in_ctbs ==
           sps.pic_width_in_ctbs * sps.pic_height_in_ctbs);
+  }
+
+  // A conformance window on every side (libx265 672x392, then hevc_metadata
+  // crop 16 from each): 640x360 starting at (16,16).
+  {
+    Sps sps;
+    const bool ok = ParseSpsFromNal(
+        {0x42, 0x01, 0x01, 0x01, 0x60, 0x00, 0x00, 0x03, 0x00, 0x90, 0x00, 0x00,
+         0x03, 0x00, 0x00, 0x03, 0x00, 0x5a, 0xa0, 0x05, 0x42, 0x01, 0x89, 0x89,
+         0x12, 0x24, 0x4e, 0x59, 0x2a, 0x49, 0x32, 0xbc, 0x05, 0xa0, 0x20, 0x00,
+         0x00, 0x03, 0x00, 0x20, 0x00, 0x00, 0x03, 0x03, 0xc1},
+        &sps);
+    CHECK(ok);
+    CHECK(sps.pic_width_in_luma_samples == 672);
+    CHECK(sps.pic_height_in_luma_samples == 392);
+    CHECK(sps.width == 640 && sps.height == 360);
+    CHECK(sps.crop_left == 16 && sps.crop_top == 16);
   }
 
   // A real Main 10 SPS (libx265, 640x480, 10-bit 4:2:0): the bit depths drive

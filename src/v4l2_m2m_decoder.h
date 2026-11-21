@@ -110,6 +110,8 @@ class V4l2M2mDecoder : public IDmaDecoder {
   std::uint32_t cap_height_ = 0;
   std::uint32_t vis_width_ = 0;  // visible: what a frame shows
   std::uint32_t vis_height_ = 0;
+  std::uint32_t vis_x_ = 0;  // where it starts in the buffer
+  std::uint32_t vis_y_ = 0;
   std::uint32_t cap_stride_ = 0;
   std::uint32_t cap_col_lines_ = 0;  // SAND: a column's height in rows
   std::uint32_t cap_uv_offset_ = 0;  // byte offset of the UV plane

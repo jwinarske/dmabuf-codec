@@ -119,14 +119,17 @@ int main(int argc, char** argv) {
     dec->Drive();
     v4l2wc::V4l2DmaFrame f;
     if (!dec->Acquire(&f)) continue;
+    // The picture, and the buffer as far as its bottom right corner: the
+    // picture starts at (crop_x, crop_y) in the coded surface.
     const std::uint32_t w = f.width, h = f.height;
+    const std::uint32_t bw = f.crop_x + w, bh = f.crop_y + h;
 
     // Import the exported dma-buf (fourcc + tiling modifier + plane layout) and
     // detile to a linear NV12 image.
     VADRMPRIMESurfaceDescriptor d{};
     d.fourcc = VA_FOURCC_NV12;
-    d.width = w;
-    d.height = h;
+    d.width = bw;
+    d.height = bh;
     d.num_objects = 1;
     d.objects[0].fd = f.fds[0];
     d.objects[0].size =
@@ -150,8 +153,8 @@ int main(int argc, char** argv) {
     attrs[1].value.type = VAGenericValueTypePointer;
     attrs[1].value.value.p = &d;
     VASurfaceID surf = VA_INVALID_SURFACE;
-    if (vaCreateSurfaces(dpy, VA_RT_FORMAT_YUV420, w, h, &surf, 1, attrs, 2) !=
-        VA_STATUS_SUCCESS) {
+    if (vaCreateSurfaces(dpy, VA_RT_FORMAT_YUV420, bw, bh, &surf, 1, attrs,
+                         2) != VA_STATUS_SUCCESS) {
       std::printf("FAIL frame %d: dma-buf import failed\n", frames);
       return 1;
     }
@@ -161,17 +164,22 @@ int main(int argc, char** argv) {
     fmt.bits_per_pixel = 12;
     VAImage img{};
     void* map = nullptr;
-    VAStatus s = vaCreateImage(dpy, &fmt, w, h, &img);
+    VAStatus s = vaCreateImage(dpy, &fmt, static_cast<int>(bw),
+                               static_cast<int>(bh), &img);
     if (s == VA_STATUS_SUCCESS)
-      s = vaGetImage(dpy, surf, 0, 0, w, h, img.image_id);
+      s = vaGetImage(dpy, surf, 0, 0, bw, bh, img.image_id);
     if (s == VA_STATUS_SUCCESS) s = vaMapBuffer(dpy, img.buf, &map);
     if (s != VA_STATUS_SUCCESS) {
       std::printf("FAIL frame %d: detile (%s)\n", frames, vaErrorStr(s));
       return 1;
     }
     const std::uint8_t* base = static_cast<const std::uint8_t*>(map);
-    const std::uint8_t* iy = base + img.offsets[0];
-    const std::uint8_t* iuv = base + img.offsets[1];
+    // 4:2:0 crops are in whole chroma samples, so crop_x and crop_y are even.
+    const std::uint8_t* iy = base + img.offsets[0] +
+                             std::size_t{f.crop_y} * img.pitches[0] + f.crop_x;
+    const std::uint8_t* iuv = base + img.offsets[1] +
+                              std::size_t{f.crop_y / 2} * img.pitches[1] +
+                              f.crop_x;
 
     // Reference planes for this frame (I420: Y, then U, then V).
     const std::size_t fsize = static_cast<std::size_t>(w) * h * 3 / 2;
