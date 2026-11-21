@@ -336,8 +336,10 @@ bool VaapiH264Decoder::DecodeSlice(const h264::Nal& nal) {
     slots_[ready_slot_].in_use = false;
   ready_slot_ = static_cast<std::uint32_t>(slot);
   have_ready_ = true;
-  slots_[slot].width = coded_w_;
-  slots_[slot].height = coded_h_;
+  // The picture's visible size, inside the SPS's frame cropping; the surface
+  // is the coded size.
+  slots_[slot].width = sps_.width;
+  slots_[slot].height = sps_.height;
 
   // dec_ref_pic_marking: sliding window (no MMCO in this subset).
   if (nal.nal_ref_idc) {
