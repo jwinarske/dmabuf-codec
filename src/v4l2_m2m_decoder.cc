@@ -324,21 +324,21 @@ bool V4l2M2mDecoder::SetupCapture() {
   // selection API takes the single-plane buffer type for both.
   vis_width_ = cap_width_;
   vis_height_ = cap_height_;
+  vis_x_ = 0;
+  vis_y_ = 0;
   v4l2_selection sel{};
   sel.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
   sel.target = V4L2_SEL_TGT_COMPOSE;
-  if (xioctl(fd_, VIDIOC_G_SELECTION, &sel) == 0 && sel.r.width > 0 &&
-      sel.r.height > 0 && sel.r.width <= cap_width_ &&
-      sel.r.height <= cap_height_) {
-    if (sel.r.left == 0 && sel.r.top == 0) {
-      vis_width_ = sel.r.width;
-      vis_height_ = sel.r.height;
-    } else {
-      // Not met yet: the plane offsets would have to move with it.
-      V4L2WC_LOG(V4L2WC_INFO)
-          << "v4l2wc: compose rectangle at " << sel.r.left << "," << sel.r.top
-          << " not used; frames are the coded size";
-    }
+  if (xioctl(fd_, VIDIOC_G_SELECTION, &sel) == 0 && sel.r.left >= 0 &&
+      sel.r.top >= 0 && sel.r.width > 0 && sel.r.height > 0 &&
+      std::uint64_t{static_cast<std::uint32_t>(sel.r.left)} + sel.r.width <=
+          cap_width_ &&
+      std::uint64_t{static_cast<std::uint32_t>(sel.r.top)} + sel.r.height <=
+          cap_height_) {
+    vis_x_ = static_cast<std::uint32_t>(sel.r.left);
+    vis_y_ = static_cast<std::uint32_t>(sel.r.top);
+    vis_width_ = sel.r.width;
+    vis_height_ = sel.r.height;
   }
   std::uint32_t sizeimage = 0;
   if (mplane_) {
@@ -456,7 +456,8 @@ bool V4l2M2mDecoder::SetupCapture() {
   capture_streaming_ = true;
   V4L2WC_LOG(V4L2WC_INFO) << "v4l2wc: CAPTURE up " << cap_width_ << "x"
                           << cap_height_ << " (shows " << vis_width_ << "x"
-                          << vis_height_ << ") stride=" << cap_stride_
+                          << vis_height_ << " at " << vis_x_ << "," << vis_y_
+                          << ") stride=" << cap_stride_
                           << " buffers=" << capture_buffers_.size();
   return true;
 }
@@ -572,6 +573,8 @@ bool V4l2M2mDecoder::Acquire(V4l2DmaFrame* out) {
   out->capture_index = idx;
   out->width = vis_width_;
   out->height = vis_height_;
+  out->crop_x = vis_x_;
+  out->crop_y = vis_y_;
   // Both linear NV12 and the SAND-tiled NV12_COL128 present as DRM_FORMAT_NV12
   // (same 'NV12' fourcc); the modifier distinguishes them.
   out->drm_fourcc = V4L2_PIX_FMT_NV12;

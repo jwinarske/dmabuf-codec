@@ -39,6 +39,10 @@ bool ParseH264(const std::vector<uint8_t>& rbsp, SpsColor* out) {
   if (!h264::ParseSps(rbsp.data(), rbsp.size(), &sps)) {
     return false;
   }
+  out->width = sps.width;
+  out->height = sps.height;
+  out->crop_left = sps.crop_left;
+  out->crop_top = sps.crop_top;
   out->bit_depth_luma = static_cast<uint8_t>(sps.bit_depth_luma);
   out->bit_depth_chroma = static_cast<uint8_t>(sps.bit_depth_chroma);
   out->colour_primaries = sps.colour_primaries;
@@ -53,6 +57,10 @@ bool ParseH265(const std::vector<uint8_t>& rbsp, SpsColor* out) {
   if (!h265::ParseSps(rbsp.data(), rbsp.size(), &sps)) {
     return false;
   }
+  out->width = sps.width;
+  out->height = sps.height;
+  out->crop_left = sps.crop_left;
+  out->crop_top = sps.crop_top;
   out->bit_depth_luma = static_cast<uint8_t>(sps.bit_depth_luma);
   out->bit_depth_chroma = static_cast<uint8_t>(sps.bit_depth_chroma);
   out->colour_primaries = sps.colour_primaries;

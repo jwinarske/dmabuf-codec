@@ -139,6 +139,24 @@ int main() {
     CHECK(wide.width == 64 && wide.height == 64);
   }
 
+  // Cropped on every side (libx264 672x392, then h264_metadata crop 16 left,
+  // right and top, 24 bottom): 640x360 starting at (16,16). An SPS that
+  // crops nothing starts at (0,0).
+  {
+    const std::vector<uint8_t> cropped = {
+        0x67, 0x64, 0x00, 0x1e, 0xac, 0xb2, 0x01, 0x50, 0x67,
+        0x89, 0x12, 0x24, 0x6e, 0x02, 0x20, 0x00, 0x00, 0x03,
+        0x00, 0x20, 0x00, 0x00, 0x07, 0x81, 0xe2, 0xc5, 0xc9};
+    Sps sps;
+    CHECK(parse_nal(cropped, cropped.size(), &sps));
+    CHECK(sps.width == 640 && sps.height == 360);
+    CHECK(sps.crop_left == 16 && sps.crop_top == 16);
+    CHECK(sps.pic_width_in_mbs * 16 == 672);
+    Sps plain;
+    CHECK(ParseSps(rbsp.data(), rbsp.size(), &plain));
+    CHECK(plain.crop_left == 0 && plain.crop_top == 0);
+  }
+
   // Malformed / truncated input must fail cleanly, never crash.
   {
     Sps sps;

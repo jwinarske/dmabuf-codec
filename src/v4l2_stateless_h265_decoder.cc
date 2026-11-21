@@ -1014,8 +1014,12 @@ bool V4l2StatelessH265Decoder::Acquire(V4l2DmaFrame* out) {
   Capture& c = captures_[cap];
   c.checked_out = true;
   out->capture_index = static_cast<std::uint32_t>(cap);
-  out->width = coded_w_;
-  out->height = coded_h_;
+  // The picture inside the SPS's conformance window. The buffer is the coded
+  // size.
+  out->width = sps_.width;
+  out->height = sps_.height;
+  out->crop_x = sps_.crop_left;
+  out->crop_y = sps_.crop_top;
   // A standard DRM format plus the SAND128 modifier, so a GL or KMS consumer
   // can import and detile the dma-buf. Each plane's pitch is the height of
   // its columns, in rows.

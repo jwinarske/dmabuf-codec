@@ -269,15 +269,21 @@ bool ParseSps(const uint8_t* rbsp, size_t size, Sps* out) {
       crop_unit_y = sub_height * field_scale;
     }
     // Reject crops that would meet or exceed the coded size (underflow guard).
+    // Summed in 64 bits: each offset is read from the stream.
     const uint64_t dx =
-        static_cast<uint64_t>(crop_left + crop_right) * crop_unit_x;
+        (static_cast<uint64_t>(crop_left) + static_cast<uint64_t>(crop_right)) *
+        crop_unit_x;
     const uint64_t dy =
-        static_cast<uint64_t>(crop_top + crop_bottom) * crop_unit_y;
+        (static_cast<uint64_t>(crop_top) + static_cast<uint64_t>(crop_bottom)) *
+        crop_unit_y;
     if (dx >= width || dy >= height) {
       return false;
     }
     width -= static_cast<uint32_t>(dx);
     height -= static_cast<uint32_t>(dy);
+    // Less than dx and dy, so they fit.
+    sps.crop_left = crop_left * crop_unit_x;
+    sps.crop_top = crop_top * crop_unit_y;
   }
 
   if (width == 0 || height == 0 || width > kMaxDimension ||

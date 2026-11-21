@@ -33,6 +33,8 @@ namespace {
 
 int g_failures = 0;
 bool g_one_buffer = false;  // --one-buffer: a frame is to be one dma-buf
+// DRM_FORMAT_MOD_BROADCOM_SAND128 with no column height in it.
+constexpr std::uint64_t kModifierSand128 = (7ULL << 56) | 4;
 #define CHECK(cond)                                               \
   do {                                                            \
     if (!(cond)) {                                                \
@@ -133,9 +135,10 @@ bool Pump(v4l2wc::IDmaDecoder* dec, const Stream& s, std::size_t from,
       r->height = f.height;
       if (r->frames == 0 && show_first) {
         std::printf(
-            "first frame %ux%u fourcc %.4s modifier 0x%llx fd %d planes %u "
-            "offsets %u/%u pitch %u ts %llu\n",
-            f.width, f.height, reinterpret_cast<const char*>(&f.drm_fourcc),
+            "first frame %ux%u at %u,%u fourcc %.4s modifier 0x%llx fd %d "
+            "planes %u offsets %u/%u pitch %u ts %llu\n",
+            f.width, f.height, f.crop_x, f.crop_y,
+            reinterpret_cast<const char*>(&f.drm_fourcc),
             static_cast<unsigned long long>(f.modifier), f.fds[0], f.num_planes,
             f.offsets[0], f.offsets[1], f.pitches[0],
             static_cast<unsigned long long>(f.timestamp));
@@ -151,11 +154,14 @@ bool Pump(v4l2wc::IDmaDecoder* dec, const Stream& s, std::size_t from,
           }
         }
         CHECK(f.width > 0 && f.height > 0 && f.pitches[0] > 0);
-        // The samples are read as rows, which is what a linear NV12 buffer
-        // has. A tiled or column layout is left to the display.
-        const bool rows = f.modifier == 0 &&
-                          f.drm_fourcc == V4L2_PIX_FMT_NV12 &&
-                          f.num_planes == 2;
+        // The samples are read from an 8-bit NV12 buffer that is linear, or
+        // in Broadcom's 128-byte columns (SAND128, each plane's pitch the
+        // height of its columns in rows) with both planes in one buffer.
+        // Another tiling is left to the display.
+        const bool nv12 = f.drm_fourcc == V4L2_PIX_FMT_NV12 &&
+                          f.num_planes == 2 && f.fds[1] == f.fds[0];
+        const bool sand = f.modifier == kModifierSand128;
+        const bool rows = nv12 && (f.modifier == 0 || sand);
         const off_t size = rows ? lseek(f.fds[0], 0, SEEK_END) : 0;
         void* p = size > 0 ? mmap(nullptr, static_cast<std::size_t>(size),
                                   PROT_READ, MAP_SHARED, f.fds[0], 0)
@@ -163,13 +169,23 @@ bool Pump(v4l2wc::IDmaDecoder* dec, const Stream& s, std::size_t from,
         CHECK(!rows || p != MAP_FAILED);
         if (p != MAP_FAILED) {
           const auto* base = static_cast<const std::uint8_t*>(p);
-          const std::uint32_t row = f.height / 2;
+          const auto at = [&](std::uint32_t plane, std::uint32_t x,
+                              std::uint32_t y) -> std::uint8_t {
+            const std::uint64_t o =
+                sand ? std::uint64_t{f.offsets[plane]} +
+                           std::uint64_t{x / 128} * 128 * f.pitches[plane] +
+                           std::uint64_t{y} * 128 + x % 128
+                     : std::uint64_t{f.offsets[plane]} +
+                           std::uint64_t{y} * f.pitches[plane] + x;
+            return o < static_cast<std::uint64_t>(size) ? base[o] : 0;
+          };
+          // The picture's middle row, from where it starts in the buffer.
+          const std::uint32_t row = f.crop_y + f.height / 2;
           for (std::uint32_t x = f.width / 12; x < f.width; x += f.width / 6) {
-            std::printf(
-                "  x=%u Y=%u U=%u V=%u\n", x,
-                base[f.offsets[0] + row * f.pitches[0] + x],
-                base[f.offsets[1] + (row / 2) * f.pitches[1] + (x & ~1u)],
-                base[f.offsets[1] + (row / 2) * f.pitches[1] + (x & ~1u) + 1]);
+            const std::uint32_t bx = f.crop_x + x;
+            std::printf("  x=%u Y=%u U=%u V=%u\n", x, at(0, bx, row),
+                        at(1, bx & ~1u, row / 2),
+                        at(1, (bx & ~1u) + 1, row / 2));
           }
           munmap(p, static_cast<std::size_t>(size));
         }

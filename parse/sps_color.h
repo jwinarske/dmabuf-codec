@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 // The color an H.264 or H.265 stream's sequence parameter set says (its VUI
-// video_signal_type), found in the access units on their way to a decoder, for
-// the engines whose pictures come back without it: the V4L2 stateful and
-// OpenMAX engines.
+// video_signal_type), and where its picture sits in the coded one, found in
+// the access units on their way to a decoder, for the engines whose pictures
+// come back without them: the V4L2 stateful and OpenMAX engines.
 //
 // The bitstream is attacker-controlled: every read is bounds-checked, and the
 // SPS itself goes through the same parsers the stateless engines use.
@@ -27,6 +27,12 @@ struct SpsColor {
   bool video_full_range_flag = false;
   uint8_t bit_depth_luma = 8;
   uint8_t bit_depth_chroma = 8;
+  // The picture inside the SPS's cropping (H.264) or conformance window
+  // (H.265): its size, and where it starts in the coded picture.
+  uint32_t width = 0;
+  uint32_t height = 0;
+  uint32_t crop_left = 0;
+  uint32_t crop_top = 0;
 };
 
 // Looks through an Annex B access unit, as far as its first coded slice, for

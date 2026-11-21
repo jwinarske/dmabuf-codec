@@ -894,10 +894,12 @@ bool VaapiH265Decoder::DecodePicture(
   // it.
   ready_slot_ = static_cast<std::uint32_t>(slot);
   have_ready_ = true;
-  // The picture's visible size, inside the SPS's conformance window; the
-  // surface is the coded size.
+  // The picture inside the SPS's conformance window: its size and where it
+  // starts. The surface is the coded size.
   slots_[slot].width = sps_.width;
   slots_[slot].height = sps_.height;
+  slots_[slot].crop_x = sps_.crop_left;
+  slots_[slot].crop_y = sps_.crop_top;
 
   // Add the decoded picture to the DPB as a short-term reference; a later
   // picture's RPS evicts it when it is no longer needed. Guard against
@@ -1026,6 +1028,8 @@ bool VaapiH265Decoder::Acquire(V4l2DmaFrame* out) {
   out->capture_index = slot;
   out->width = s.width;
   out->height = s.height;
+  out->crop_x = s.crop_x;
+  out->crop_y = s.crop_y;
   out->drm_fourcc = s.drm_fourcc;
   out->modifier = s.modifier;
   out->num_planes = s.num_planes;

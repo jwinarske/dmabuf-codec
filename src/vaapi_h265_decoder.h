@@ -97,6 +97,7 @@ class VaapiH265Decoder : public IDmaDecoder {
     std::uint32_t offsets[4] = {0, 0, 0, 0};
     std::uint32_t pitches[4] = {0, 0, 0, 0};
     std::uint32_t width = 0, height = 0;
+    std::uint32_t crop_x = 0, crop_y = 0;
     std::uint64_t timestamp = 0;
   };
   // A short-term reference picture currently in the DPB.
