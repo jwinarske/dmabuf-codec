@@ -894,8 +894,10 @@ bool VaapiH265Decoder::DecodePicture(
   // it.
   ready_slot_ = static_cast<std::uint32_t>(slot);
   have_ready_ = true;
-  slots_[slot].width = coded_w_;
-  slots_[slot].height = coded_h_;
+  // The picture's visible size, inside the SPS's conformance window; the
+  // surface is the coded size.
+  slots_[slot].width = sps_.width;
+  slots_[slot].height = sps_.height;
 
   // Add the decoded picture to the DPB as a short-term reference; a later
   // picture's RPS evicts it when it is no longer needed. Guard against
