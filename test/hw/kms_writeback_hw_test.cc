@@ -48,6 +48,7 @@
 
 #include <algorithm>
 #include <cerrno>
+#include <climits>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -94,9 +95,13 @@ bool ReadFile(const char* path, std::vector<std::uint8_t>* out) {
     return false;
   }
   std::uint8_t buf[65536];
-  std::size_t n;
-  while ((n = std::fread(buf, 1, sizeof buf, f)) > 0) {
+  // A short read is the end (or an error): no read after it.
+  for (;;) {
+    const std::size_t n = std::fread(buf, 1, sizeof buf, f);
     out->insert(out->end(), buf, buf + n);
+    if (n < sizeof buf) {
+      break;
+    }
   }
   std::fclose(f);
   return true;
@@ -568,9 +573,9 @@ void WritePpm(const Output& out, const char* path) {
     const std::uint8_t* px =
         out.capture.map + static_cast<std::size_t>(y) * out.capture.pitch;
     for (std::uint32_t x = 0; x < out.width; ++x) {
-      row[3 * x] = px[4 * x + 2];
-      row[3 * x + 1] = px[4 * x + 1];
-      row[3 * x + 2] = px[4 * x];
+      row[std::size_t{3} * x] = px[std::size_t{4} * x + 2];
+      row[std::size_t{3} * x + 1] = px[std::size_t{4} * x + 1];
+      row[std::size_t{3} * x + 2] = px[std::size_t{4} * x];
     }
     std::fwrite(row.data(), 1, row.size(), f);
   }
@@ -693,15 +698,34 @@ bool ShowAndCompare(Output* out, const v4l2wc::V4l2DmaFrame& f,
   return ok;
 }
 
+// "WIDTHxHEIGHT", each a whole number that fits an unsigned.
+bool ParseSize(const char* s, unsigned* width, unsigned* height) {
+  char* end = nullptr;
+  errno = 0;
+  const unsigned long w = std::strtoul(s, &end, 10);
+  if (end == s || *end != 'x' || errno != 0 || w > UINT_MAX) {
+    return false;
+  }
+  const char* rest = end + 1;
+  const unsigned long h = std::strtoul(rest, &end, 10);
+  if (end == rest || *end != '\0' || errno != 0 || h > UINT_MAX) {
+    return false;
+  }
+  *width = static_cast<unsigned>(w);
+  *height = static_cast<unsigned>(h);
+  return true;
+}
+
 }  // namespace
 
-int main(int argc, char** argv) {
+// A test: an exception ends it, which is a failure.
+int main(int argc, char** argv) {  // NOLINT(bugprone-exception-escape)
   setvbuf(stdout, nullptr, _IONBF, 0);
   const bool hevc = argc > 1 && std::strcmp(argv[1], "hevc") == 0;
   unsigned width = 0, height = 0;
   if (argc < 5 || (!hevc && std::strcmp(argv[1], "h264") != 0) ||
-      std::sscanf(argv[4], "%ux%u", &width, &height) != 2 || width == 0 ||
-      height == 0 || width > 1920 || height > 1080) {
+      !ParseSize(argv[4], &width, &height) || width == 0 || height == 0 ||
+      width > 1920 || height > 1080) {
     std::printf(
         "usage: %s h264|hevc clip ref.yuv WIDTHxHEIGHT [--frame N] "
         "[--card node] [--one-buffer] [--v4l2 node] [--hevc node] "

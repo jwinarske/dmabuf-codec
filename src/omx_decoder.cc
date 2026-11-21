@@ -570,6 +570,7 @@ std::unique_ptr<OmxDecoder> OmxDecoder::Create(
   std::vector<std::vector<char>> names(
       count, std::vector<char>(OMX_MAX_STRINGNAME_SIZE));
   std::vector<OMX_U8*> name_ptrs;
+  name_ptrs.reserve(names.size());
   for (auto& n : names) {
     name_ptrs.push_back(reinterpret_cast<OMX_U8*>(n.data()));
   }

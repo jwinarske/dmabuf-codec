@@ -65,6 +65,7 @@ VaapiH265Decoder::~VaapiH265Decoder() {
     if (context_) va_.DestroyContext(dpy_, context_);
     if (!slots_.empty()) {
       std::vector<VASurfaceID> surfs;
+      surfs.reserve(slots_.size());
       for (auto& sl : slots_) surfs.push_back(sl.surface);
       va_.DestroySurfaces(dpy_, surfs.data(), static_cast<int>(surfs.size()));
     }
@@ -738,6 +739,7 @@ bool VaapiH265Decoder::DecodePicture(
     };
     if (is_p || is_b) {
       std::vector<std::uint8_t> temp0;
+      temp0.reserve(st_curr_before.size() + st_curr_after.size());
       for (const auto& e : st_curr_before) temp0.push_back(ref_of(e));
       for (const auto& e : st_curr_after) temp0.push_back(ref_of(e));
       for (const auto& e : lt_curr) temp0.push_back(ref_of(e));
@@ -746,6 +748,7 @@ bool VaapiH265Decoder::DecodePicture(
                  sp.RefPicList[0]);
       if (is_b) {
         std::vector<std::uint8_t> temp1;
+        temp1.reserve(st_curr_after.size() + st_curr_before.size());
         for (const auto& e : st_curr_after) temp1.push_back(ref_of(e));
         for (const auto& e : st_curr_before) temp1.push_back(ref_of(e));
         for (const auto& e : lt_curr) temp1.push_back(ref_of(e));
