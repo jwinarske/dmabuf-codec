@@ -237,6 +237,21 @@ SubmitResult V4l2M2mDecoder::SubmitBitstream(const std::uint8_t* data,
   if (!data || size == 0) {
     return SubmitResult::kError;
   }
+  // A drained decoder stays stopped until told to start: it takes the input
+  // but gives no frames (bcm2835-codec). EBUSY is a drain still under way;
+  // the caller drives the decoder and tries again.
+  if (stopped_) {
+    v4l2_decoder_cmd cmd{};
+    cmd.cmd = V4L2_DEC_CMD_START;
+    if (xioctl(fd_, VIDIOC_DECODER_CMD, &cmd) != 0) {
+      if (errno == EBUSY) {
+        return SubmitResult::kTryAgain;
+      }
+      V4L2WC_LOG(V4L2WC_ERROR)
+          << "v4l2wc: DEC_CMD_START after a drain: " << std::strerror(errno);
+    }
+    stopped_ = false;
+  }
   if (output_free_.empty()) {
     return SubmitResult::kTryAgain;
   }
@@ -620,6 +635,7 @@ void V4l2M2mDecoder::Flush() {
     StreamOff(fd_, CaptureType(mplane_));
     capture_streaming_ = false;
   }
+  stopped_ = false;  // STREAMOFF also ends a drain's stop
   ready_.clear();
 
   // Every OUTPUT buffer is free again, and the queue restarts so the next
@@ -651,10 +667,13 @@ void V4l2M2mDecoder::Flush() {
 void V4l2M2mDecoder::Drain() {
   // Tell the stateful decoder there is no more input, so it emits the frames
   // it still holds; Drive()/Acquire() then pump them out. Best effort: a
-  // driver that does not implement the command simply ignores it.
+  // driver that does not implement the command simply ignores it. One that
+  // does is stopped after it, until SubmitBitstream() starts it again.
   v4l2_decoder_cmd cmd{};
   cmd.cmd = V4L2_DEC_CMD_STOP;
-  xioctl(fd_, VIDIOC_DECODER_CMD, &cmd);
+  if (xioctl(fd_, VIDIOC_DECODER_CMD, &cmd) == 0) {
+    stopped_ = true;
+  }
 }
 
 }  // namespace v4l2wc

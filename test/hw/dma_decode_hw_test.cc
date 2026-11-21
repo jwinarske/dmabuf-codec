@@ -6,8 +6,9 @@
 // before each frame and no reordered frames, three ways through the
 // IDmaDecoder seam, and checks what comes out:
 //   1. start to finish, holding several frames before releasing them;
-//   2. a flush halfway, then the whole file again (a seek);
-//   3. a second decoder after the first is destroyed.
+//   2. the whole file again with no flush: decoding goes on after a drain;
+//   3. a flush halfway, then the whole file again (a seek);
+//   4. a second decoder after the first is destroyed.
 // Usage: dma_decode_hw_test h264|hevc clip [--v4l2 node] [--hevc node]
 //        [--omx core library] [--va render node] [--one-buffer]
 // A clip for it:
@@ -261,7 +262,15 @@ int main(int argc, char** argv) {
     // them only once they have seen the stream.
     fds_before = count_fds();
 
-    // 2. Half the file, a flush, then all of it again from its key frame.
+    // 2. The whole file again with no flush: a SubmitBitstream() after a
+    //    Drain() resumes decoding.
+    Result more;
+    CHECK(Pump(dec.get(), s, 0, units, /*drain=*/true, 2, &more, false));
+    std::printf("after a drain: %zu frames of %zu\n", more.frames, units);
+    CHECK(more.frames == units);
+    CHECK(more.ordered);
+
+    // 3. Half the file, a flush, then all of it again from its key frame.
     dec->Flush();
     Result half;
     CHECK(Pump(dec.get(), s, 0, units / 2, /*drain=*/false, 2, &half, false));
@@ -275,7 +284,7 @@ int main(int argc, char** argv) {
     CHECK(again.ordered);
   }
 
-  // 3. The first decoder is gone; a second starts clean.
+  // 4. The first decoder is gone; a second starts clean.
   {
     auto dec = v4l2wc::CreateDmaDecoder(config);
     CHECK(dec != nullptr);
@@ -287,7 +296,7 @@ int main(int argc, char** argv) {
       CHECK(r.frames == units);
     }
   }
-  // 4. A consumer that gives nothing back. The decoder runs out of buffers
+  // 5. A consumer that gives nothing back. The decoder runs out of buffers
   //    to decode into and has to say so, not wait for one: the caller may be
   //    holding a lock the consumer needs to return a frame. Without that this
   //    step does not come back.

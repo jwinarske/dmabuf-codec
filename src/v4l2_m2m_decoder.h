@@ -103,6 +103,8 @@ class V4l2M2mDecoder : public IDmaDecoder {
 
   std::vector<CaptureBuffer> capture_buffers_;
   bool capture_streaming_ = false;
+  // Drain() sent DEC_CMD_STOP; the next SubmitBitstream() sends START.
+  bool stopped_ = false;
   std::uint32_t capture_count_req_ = 4;
   std::uint32_t cap_width_ = 0;  // coded: the buffer's layout
   std::uint32_t cap_height_ = 0;
