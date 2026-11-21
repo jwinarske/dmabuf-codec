@@ -303,6 +303,28 @@ bool V4l2M2mDecoder::SetupCapture() {
     cap_height_ = cfmt.fmt.pix.height;
   }
   xioctl(fd_, VIDIOC_S_FMT, &cfmt);  // pin the CAPTURE pixel format
+
+  // The format is the coded size, in whole macroblocks (640x368 for a 640x360
+  // stream on bcm2835-codec); the picture is the compose rectangle. The
+  // selection API takes the single-plane buffer type for both.
+  vis_width_ = cap_width_;
+  vis_height_ = cap_height_;
+  v4l2_selection sel{};
+  sel.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+  sel.target = V4L2_SEL_TGT_COMPOSE;
+  if (xioctl(fd_, VIDIOC_G_SELECTION, &sel) == 0 && sel.r.width > 0 &&
+      sel.r.height > 0 && sel.r.width <= cap_width_ &&
+      sel.r.height <= cap_height_) {
+    if (sel.r.left == 0 && sel.r.top == 0) {
+      vis_width_ = sel.r.width;
+      vis_height_ = sel.r.height;
+    } else {
+      // Not met yet: the plane offsets would have to move with it.
+      V4L2WC_LOG(V4L2WC_INFO)
+          << "v4l2wc: compose rectangle at " << sel.r.left << "," << sel.r.top
+          << " not used; frames are the coded size";
+    }
+  }
   std::uint32_t sizeimage = 0;
   if (mplane_) {
     cap_stride_ = cfmt.fmt.pix_mp.plane_fmt[0].bytesperline;
@@ -409,7 +431,8 @@ bool V4l2M2mDecoder::SetupCapture() {
   }
   capture_streaming_ = true;
   V4L2WC_LOG(V4L2WC_INFO) << "v4l2wc: CAPTURE up " << cap_width_ << "x"
-                          << cap_height_ << " stride=" << cap_stride_
+                          << cap_height_ << " (shows " << vis_width_ << "x"
+                          << vis_height_ << ") stride=" << cap_stride_
                           << " buffers=" << capture_buffers_.size();
   return true;
 }
@@ -488,6 +511,16 @@ DriveResult V4l2M2mDecoder::Drive() {
       if (buf.index < capture_buffers_.size()) {
         capture_buffers_[buf.index].queued = false;
       }
+      // A buffer with nothing in it is not a frame: the driver's marker for
+      // the end of a drain (V4L2_BUF_FLAG_LAST) comes back empty. It goes
+      // back to the driver.
+      const std::uint32_t used = mplane_ ? planes[0].bytesused : buf.bytesused;
+      if (used == 0) {
+        if (buf.index < capture_buffers_.size()) {
+          QueueCaptureBuffer(buf.index);
+        }
+        continue;
+      }
       // Recover the passthrough token with the same packing SubmitBitstream
       // used (tv_sec * 1e6 + tv_usec), so it round-trips exactly.
       const std::uint64_t timestamp =
@@ -513,8 +546,8 @@ bool V4l2M2mDecoder::Acquire(V4l2DmaFrame* out) {
 
   *out = V4l2DmaFrame{};
   out->capture_index = idx;
-  out->width = cap_width_;
-  out->height = cap_height_;
+  out->width = vis_width_;
+  out->height = vis_height_;
   // Both linear NV12 and the SAND-tiled NV12_COL128 present as DRM_FORMAT_NV12
   // (same 'NV12' fourcc); the modifier distinguishes them.
   out->drm_fourcc = V4L2_PIX_FMT_NV12;

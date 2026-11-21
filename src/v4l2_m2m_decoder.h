@@ -104,8 +104,10 @@ class V4l2M2mDecoder : public IDmaDecoder {
   std::vector<CaptureBuffer> capture_buffers_;
   bool capture_streaming_ = false;
   std::uint32_t capture_count_req_ = 4;
-  std::uint32_t cap_width_ = 0;
+  std::uint32_t cap_width_ = 0;  // coded: the buffer's layout
   std::uint32_t cap_height_ = 0;
+  std::uint32_t vis_width_ = 0;  // visible: what a frame shows
+  std::uint32_t vis_height_ = 0;
   std::uint32_t cap_stride_ = 0;
   std::uint32_t cap_col_lines_ = 0;  // SAND: a column's height in rows
   std::uint32_t cap_uv_offset_ = 0;  // byte offset of the UV plane
