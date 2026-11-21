@@ -18,12 +18,15 @@ namespace v4l2wc {
 
 enum class SpsCodec { kH264, kH265 };
 
-// Codes from H.264/H.265 Annex E; 2 is "unspecified".
+// Codes from H.264/H.265 Annex E; 2 is "unspecified". With them the SPS's
+// bit depths, which an engine whose pictures are 8-bit NV12 checks.
 struct SpsColor {
   uint8_t colour_primaries = 2;
   uint8_t transfer_characteristics = 2;
   uint8_t matrix_coeffs = 2;
   bool video_full_range_flag = false;
+  uint8_t bit_depth_luma = 8;
+  uint8_t bit_depth_chroma = 8;
 };
 
 // Looks through an Annex B access unit, as far as its first coded slice, for

@@ -130,6 +130,32 @@ int main() {
     CHECK(!FindSpsColor(SpsCodec::kH264, nullptr, 0, &c));
     CHECK(!FindSpsColor(SpsCodec::kH264, plain.data(), plain.size(), nullptr));
   }
+  // The bit depths: 8 for the 8-bit SPSs above, 10 for libx264's High 10 and
+  // libx265's Main 10 (64x64).
+  {
+    SpsColor c;
+    const auto h264 = AnnexB({kH264Bt709, kH264Idr});
+    CHECK(FindSpsColor(SpsCodec::kH264, h264.data(), h264.size(), &c));
+    CHECK(c.bit_depth_luma == 8 && c.bit_depth_chroma == 8);
+    const auto h265 = AnnexB({kH265Vps, kH265Bt709, kH265Idr});
+    CHECK(FindSpsColor(SpsCodec::kH265, h265.data(), h265.size(), &c));
+    CHECK(c.bit_depth_luma == 8 && c.bit_depth_chroma == 8);
+    const std::vector<uint8_t> high10 = {
+        0x67, 0x6e, 0x00, 0x0a, 0xa6, 0xcd, 0x94, 0x42, 0x6c, 0x05,
+        0xa8, 0x08, 0x08, 0x0a, 0x00, 0x00, 0x03, 0x00, 0x02, 0x00,
+        0x00, 0x03, 0x00, 0x28, 0x1e, 0x24, 0x4b, 0x2c};
+    const auto deep264 = AnnexB({high10, kH264Idr});
+    CHECK(FindSpsColor(SpsCodec::kH264, deep264.data(), deep264.size(), &c));
+    CHECK(c.bit_depth_luma == 10 && c.bit_depth_chroma == 10);
+    const std::vector<uint8_t> main10 = {
+        0x42, 0x01, 0x01, 0x02, 0x20, 0x00, 0x00, 0x03, 0x00, 0x90, 0x00,
+        0x00, 0x03, 0x00, 0x00, 0x03, 0x00, 0x1e, 0xa0, 0x20, 0x81, 0x04,
+        0xd9, 0x65, 0x66, 0x92, 0x4c, 0xaf, 0x01, 0x68, 0x08, 0x00, 0x00,
+        0x03, 0x00, 0x08, 0x00, 0x00, 0x03, 0x00, 0x50, 0x40};
+    const auto deep265 = AnnexB({kH265Vps, main10, kH265Idr});
+    CHECK(FindSpsColor(SpsCodec::kH265, deep265.data(), deep265.size(), &c));
+    CHECK(c.bit_depth_luma == 10 && c.bit_depth_chroma == 10);
+  }
   // Every cut and every flipped byte stays inside the buffer (the sanitizer
   // build checks that); a cut H.265 SPS says nothing.
   {
