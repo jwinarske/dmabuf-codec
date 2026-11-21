@@ -32,6 +32,11 @@ struct DmaDecoderConfig {
   // Ask for a frame's planes in one dma-buf where the engine has a choice
   // (the stateless HEVC engine: a Pi 5's driver defaults to a buffer each).
   bool one_buffer_frames = false;
+
+  // The stream's bit depth where the caller knows it (from its SPS), and 0
+  // where not. Past 8, the engines whose pictures are 8-bit NV12 (V4L2
+  // stateful, OpenMAX) are not tried.
+  std::uint32_t bit_depth = 0;
 };
 
 // Builds a decoder for `config`, or nullptr when no engine can serve it.

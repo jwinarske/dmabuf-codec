@@ -761,6 +761,20 @@ SubmitResult OmxDecoder::SubmitBitstream(const std::uint8_t* data,
     }
     s->settled = true;  // it is not going to reconfigure
   }
+  // The pictures are taken as 8-bit NV12, which a deeper stream's are not:
+  // Qualcomm's component gives a 10-bit HEVC stream's in its own layout, and
+  // read as NV12 they are wrong colors throughout. Refused at its SPS.
+  SpsColor color;
+  const bool said =
+      s->watch_color && FindSpsColor(s->color_codec, data, size, &color);
+  if (said && (color.bit_depth_luma > 8 || color.bit_depth_chroma > 8)) {
+    V4L2WC_LOG(V4L2WC_ERROR)
+        << "omx: the stream is " << static_cast<int>(color.bit_depth_luma)
+        << "-bit; only 8-bit pictures are taken here";
+    std::lock_guard<std::mutex> lock(s->mu);
+    s->error = true;
+    return SubmitResult::kError;
+  }
   if (s->eos_sent) {
     // Decoding again after a drain: the buffers parked at end of stream go
     // back to the component.
@@ -781,8 +795,7 @@ SubmitResult OmxDecoder::SubmitBitstream(const std::uint8_t* data,
     s->first_sent = true;
     s->first_submit = std::chrono::steady_clock::now();
   }
-  SpsColor color;
-  if (s->watch_color && FindSpsColor(s->color_codec, data, size, &color)) {
+  if (said) {
     std::lock_guard<std::mutex> lock(s->mu);  // Acquire reads it under mu
     s->color = color;
   }

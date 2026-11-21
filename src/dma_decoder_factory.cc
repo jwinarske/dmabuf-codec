@@ -38,10 +38,17 @@ std::unique_ptr<IDmaDecoder> CreateDmaDecoder(const DmaDecoderConfig& config) {
   // the frame pipeline hold several decoded buffers at once (on a plane,
   // queued, decoded-ahead), and 16 left too few free to sustain decode -- it
   // stalled a couple of seconds in once frames piled up.
-  if (auto v4l2 = V4l2M2mDecoder::Create(
-          device, config.codec_fourcc, V4L2_PIX_FMT_NV12, config.coded_width,
-          config.coded_height, /*output_buffer_count=*/4,
-          /*capture_buffer_count=*/28, output_buffer_size)) {
+  const bool deep = config.bit_depth > 8;
+  if (deep) {
+    V4L2WC_LOG(V4L2WC_INFO) << "v4l2wc: a " << config.bit_depth
+                            << "-bit stream; the 8-bit engines are not tried";
+  }
+  if (auto v4l2 = deep ? nullptr
+                       : V4l2M2mDecoder::Create(
+                             device, config.codec_fourcc, V4L2_PIX_FMT_NV12,
+                             config.coded_width, config.coded_height,
+                             /*output_buffer_count=*/4,
+                             /*capture_buffer_count=*/28, output_buffer_size)) {
     V4L2WC_LOG(V4L2WC_INFO) << "v4l2wc: V4L2 M2M decoder on " << device << " "
                             << config.coded_width << "x" << config.coded_height;
     return v4l2;
@@ -76,10 +83,11 @@ std::unique_ptr<IDmaDecoder> CreateDmaDecoder(const DmaDecoderConfig& config) {
   // OpenMAX core in userspace. Costs one failed dlopen where there is none.
   // The extra buffers are for what the compositor and the frame pipeline hold,
   // as above.
-  if (auto omx =
-          OmxDecoder::Create(config.omx_core_library, config.codec_fourcc,
-                             config.coded_width, config.coded_height,
-                             /*extra_output_buffers=*/16)) {
+  if (auto omx = deep ? nullptr
+                      : OmxDecoder::Create(
+                            config.omx_core_library, config.codec_fourcc,
+                            config.coded_width, config.coded_height,
+                            /*extra_output_buffers=*/16)) {
     V4L2WC_LOG(V4L2WC_INFO) << "v4l2wc: OpenMAX decoder " << config.coded_width
                             << "x" << config.coded_height;
     return omx;
