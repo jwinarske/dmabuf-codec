@@ -29,9 +29,12 @@
 //
 // Usage: kms_writeback_hw_test h264|hevc clip ref.yuv WIDTHxHEIGHT
 //        [--frame N] [--card node] [--one-buffer] [--v4l2 node] [--hevc node]
-//        [--ppm file]
+//        [--sand] [--ppm file]
 //   --frame N   check only frame N (from 1); default the first, the middle
 //               and the last
+//   --sand      H.264 only: the V4L2 stateful engine with its SAND capture
+//               format (NC12, 128-px columns) rather than the factory's
+//               choice, which there is linear NV12
 //   --ppm file  write the last capture there, to look at
 
 #include <drm_fourcc.h>
@@ -43,6 +46,7 @@
 #include <xf86drm.h>
 #include <xf86drmMode.h>
 
+#include <algorithm>
 #include <cerrno>
 #include <cmath>
 #include <cstdio>
@@ -53,6 +57,12 @@
 #include <vector>
 
 #include "src/dma_decoder_factory.h"
+#include "src/v4l2_m2m_decoder.h"
+
+// The Raspberry Pi kernel's 128-px column format; not in every uapi header.
+#ifndef V4L2_PIX_FMT_NV12_COL128
+#define V4L2_PIX_FMT_NV12_COL128 v4l2_fourcc('N', 'C', '1', '2')
+#endif
 
 namespace {
 
@@ -690,7 +700,7 @@ int main(int argc, char** argv) {
     std::printf(
         "usage: %s h264|hevc clip ref.yuv WIDTHxHEIGHT [--frame N] "
         "[--card node] [--one-buffer] [--v4l2 node] [--hevc node] "
-        "[--ppm file]\n",
+        "[--sand] [--ppm file]\n",
         argv[0]);
     return 2;
   }
@@ -701,10 +711,13 @@ int main(int argc, char** argv) {
   const char* card = nullptr;
   const char* ppm = nullptr;
   std::size_t only = 0;
+  bool sand = false;
   for (int i = 5; i < argc; ++i) {
     const char* value = i + 1 < argc ? argv[i + 1] : nullptr;
     if (std::strcmp(argv[i], "--one-buffer") == 0) {
       config.one_buffer_frames = true;
+    } else if (std::strcmp(argv[i], "--sand") == 0) {
+      sand = true;
     } else if (value == nullptr) {
       std::printf("%s: unknown, or needs a value\n", argv[i]);
       return 2;
@@ -797,7 +810,22 @@ int main(int argc, char** argv) {
     out.background.map[i + 3] = 0xff;
   }
 
-  auto dec = v4l2wc::CreateDmaDecoder(config);
+  std::unique_ptr<v4l2wc::IDmaDecoder> dec;
+  if (sand) {
+    if (hevc) {
+      std::printf("--sand is for the H.264 stateful engine\n");
+      return 2;
+    }
+    // As the factory makes it, but with the SAND capture format.
+    dec = v4l2wc::V4l2M2mDecoder::Create(
+        config.v4l2_device != nullptr ? config.v4l2_device : "/dev/video10",
+        config.codec_fourcc, V4L2_PIX_FMT_NV12_COL128, width, height,
+        /*output_buffer_count=*/4, /*capture_buffer_count=*/28,
+        std::max<std::size_t>(static_cast<std::size_t>(width) * height,
+                              std::size_t{1} << 20));
+  } else {
+    dec = v4l2wc::CreateDmaDecoder(config);
+  }
   CHECK(dec != nullptr);
   std::size_t fed = 0, frames = 0, checked = 0;
   bool drained = false, told = false;
