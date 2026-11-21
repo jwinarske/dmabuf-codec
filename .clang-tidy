@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: 2026 Joel Winarske
+# SPDX-License-Identifier: MIT
+#
+# clang-tidy for dmabuf-codec: bugprone, performance and the static analyzer.
+#
+# Off because they flag what this code does on purpose:
+#   bugprone-easily-swappable-parameters   most two-int signatures
+#   bugprone-throwing-static-initialization  the tests' static tables
+#   performance-enum-size                  enums are int by choice
+#   performance-trivially-destructible     special members are out of line on
+#                                          purpose, as V4l2DmaFrame's are
+#
+# Not yet: on, it has findings to work through first (count on 2026-11-21).
+# Take it off this list with its fixes.
+#   bugprone-narrowing-conversions         16
+Checks: >
+  -*,
+  bugprone-*,
+  performance-*,
+  clang-analyzer-*,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-throwing-static-initialization,
+  -performance-enum-size,
+  -performance-trivially-destructible,
+  -bugprone-narrowing-conversions
+# This repo's own headers only, not third_party/'s or the system's (a sysroot
+# included, whose path also has an include/ in it).
+HeaderFilterRegex: '.*/(include|parse|src|test)/.*'
+ExcludeHeaderFilterRegex: '.*/(third_party|usr/include)/.*'

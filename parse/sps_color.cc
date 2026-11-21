@@ -12,7 +12,7 @@ namespace v4l2wc {
 namespace {
 
 // The longest SPS taken; a real one is a few hundred bytes at most.
-constexpr size_t kMaxSps = 64 * 1024;
+constexpr size_t kMaxSps = size_t{64} * 1024;
 
 // The RBSP of the NAL payload starting at data[begin] (after its header), up
 // to the next start code, with the emulation-prevention bytes removed.

@@ -63,6 +63,7 @@ VaapiH264Decoder::~VaapiH264Decoder() {
     if (context_) va_.DestroyContext(dpy_, context_);
     if (!slots_.empty()) {
       std::vector<VASurfaceID> surfs;
+      surfs.reserve(slots_.size());
       for (auto& sl : slots_) surfs.push_back(sl.surface);
       va_.DestroySurfaces(dpy_, surfs.data(), (int)surfs.size());
     }

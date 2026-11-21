@@ -721,6 +721,7 @@ bool V4l2StatelessH265Decoder::DecodePicture(
     };
     if (is_p || is_b) {
       std::vector<std::uint8_t> t0;
+      t0.reserve(st_curr_before.size() + st_curr_after.size());
       for (const auto& e : st_curr_before) t0.push_back(dpb_index(e));
       for (const auto& e : st_curr_after) t0.push_back(dpb_index(e));
       for (const auto& e : lt_curr) t0.push_back(dpb_index(e));
@@ -728,6 +729,7 @@ bool V4l2StatelessH265Decoder::DecodePicture(
                  ssh.num_ref_idx_l0_active_minus1, sp.ref_idx_l0);
       if (is_b) {
         std::vector<std::uint8_t> t1;
+        t1.reserve(st_curr_after.size() + st_curr_before.size());
         for (const auto& e : st_curr_after) t1.push_back(dpb_index(e));
         for (const auto& e : st_curr_before) t1.push_back(dpb_index(e));
         for (const auto& e : lt_curr) t1.push_back(dpb_index(e));

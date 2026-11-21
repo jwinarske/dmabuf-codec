@@ -9,20 +9,20 @@
 namespace v4l2wc {
 namespace {
 
-void DefaultSink(LogSeverity severity, const char* message) {
-  const char* label = "INFO";
+const char* Label(LogSeverity severity) {
   switch (severity) {
-    case LogSeverity::kInfo:
-      label = "INFO";
-      break;
     case LogSeverity::kWarning:
-      label = "WARN";
-      break;
+      return "WARN";
     case LogSeverity::kError:
-      label = "ERROR";
+      return "ERROR";
+    case LogSeverity::kInfo:
       break;
   }
-  std::fprintf(stderr, "[v4l2wc %s] %s\n", label, message);
+  return "INFO";
+}
+
+void DefaultSink(LogSeverity severity, const char* message) {
+  std::fprintf(stderr, "[v4l2wc %s] %s\n", Label(severity), message);
 }
 
 LogSink g_sink = &DefaultSink;

@@ -59,9 +59,13 @@ bool Load(const char* path, bool hevc, Stream* s) {
     return false;
   }
   std::uint8_t buf[65536];
-  std::size_t n;
-  while ((n = std::fread(buf, 1, sizeof buf, f)) > 0) {
+  // A short read is the end (or an error): no read after it.
+  for (;;) {
+    const std::size_t n = std::fread(buf, 1, sizeof buf, f);
     s->bytes.insert(s->bytes.end(), buf, buf + n);
+    if (n < sizeof buf) {
+      break;
+    }
   }
   std::fclose(f);
   const auto& d = s->bytes;
@@ -213,7 +217,8 @@ bool Pump(v4l2wc::IDmaDecoder* dec, const Stream& s, std::size_t from,
 
 }  // namespace
 
-int main(int argc, char** argv) {
+// A test: an exception ends it, which is a failure.
+int main(int argc, char** argv) {  // NOLINT(bugprone-exception-escape)
   setvbuf(stdout, nullptr, _IONBF, 0);
   const bool hevc = argc > 1 && std::strcmp(argv[1], "hevc") == 0;
   if (argc < 3 || (!hevc && std::strcmp(argv[1], "h264") != 0)) {
