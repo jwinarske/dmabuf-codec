@@ -178,9 +178,10 @@ int main() {
     CHECK(!FindSpsColor(SpsCodec::kH265, h265.data(), 20, &c));
   }
 
-  // Where the picture sits: 640x360 at (16,16) in a 672x392 coded picture
-  // (libx264 and libx265, then cropped 16 left and top with h264_metadata
-  // and hevc_metadata).
+  // Where the picture sits: 640x360 at (16,16), from libx264 and libx265 at
+  // 672x392 cropped 16 left and top with h264_metadata and hevc_metadata.
+  // The coded picture is 672x400 in H.264's whole macroblocks, 672x392 in
+  // H.265.
   {
     const auto avc =
         AnnexB({{0x67, 0x64, 0x00, 0x1e, 0xac, 0xb2, 0x01, 0x50, 0x67,
@@ -190,6 +191,7 @@ int main() {
     CHECK(FindSpsColor(SpsCodec::kH264, avc.data(), avc.size(), &c));
     CHECK(c.width == 640 && c.height == 360);
     CHECK(c.crop_left == 16 && c.crop_top == 16);
+    CHECK(c.coded_width == 672 && c.coded_height == 400);
     const auto hevc =
         AnnexB({{0x42, 0x01, 0x01, 0x01, 0x60, 0x00, 0x00, 0x03, 0x00,
                  0x90, 0x00, 0x00, 0x03, 0x00, 0x00, 0x03, 0x00, 0x5a,
@@ -199,6 +201,7 @@ int main() {
     CHECK(FindSpsColor(SpsCodec::kH265, hevc.data(), hevc.size(), &c));
     CHECK(c.width == 640 && c.height == 360);
     CHECK(c.crop_left == 16 && c.crop_top == 16);
+    CHECK(c.coded_width == 672 && c.coded_height == 392);
   }
 
   if (g_failures == 0) {

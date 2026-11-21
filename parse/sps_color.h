@@ -33,6 +33,10 @@ struct SpsColor {
   uint32_t height = 0;
   uint32_t crop_left = 0;
   uint32_t crop_top = 0;
+  // The coded picture: whole macroblocks (H.264, both fields of a frame that
+  // is not frames only) or luma samples (H.265).
+  uint32_t coded_width = 0;
+  uint32_t coded_height = 0;
 };
 
 // Looks through an Annex B access unit, as far as its first coded slice, for
