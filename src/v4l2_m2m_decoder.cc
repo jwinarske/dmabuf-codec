@@ -343,16 +343,25 @@ bool V4l2M2mDecoder::SetupCapture() {
     // a column in rows, luma and chroma together, and the UV plane starts
     // after the luma rows within each column.
     const std::uint32_t ncols = (cap_width_ + 127) / 128;
-    const std::uint32_t col_lines =
-        (ncols && sizeimage) ? sizeimage / (ncols * 128) : 0;
     cap_modifier_ = kModifierSand128;
-    // A driver that reports no size: a column is at least the luma rows and
-    // half as many of chroma.
-    cap_col_lines_ = col_lines != 0 ? col_lines : cap_height_ + cap_height_ / 2;
+    // A column holds the coded luma rows and then half as many of chroma.
+    // The format's sizeimage is not that: bcm2835-codec gives 409600 for
+    // 640x368 (a column of 640 rows), and its frames have columns of 552
+    // (fitted against a software decode on a Pi 4). Too small a buffer for
+    // the layout is refused.
+    cap_col_lines_ = cap_height_ + cap_height_ / 2;
     cap_uv_offset_ = cap_height_ * 128;
+    const std::uint64_t needed =
+        static_cast<std::uint64_t>(ncols) * 128 * cap_col_lines_;
+    if (sizeimage != 0 && sizeimage < needed) {
+      V4L2WC_LOG(V4L2WC_ERROR)
+          << "v4l2wc: SAND buffer of " << sizeimage << " bytes, below the "
+          << needed << " its columns take";
+      return false;
+    }
     V4L2WC_LOG(V4L2WC_INFO)
         << "v4l2wc: SAND geom bpl=" << cap_stride_ << " sizeimage=" << sizeimage
-        << " ncols=" << ncols << " col_lines=" << col_lines
+        << " ncols=" << ncols << " col_lines=" << cap_col_lines_
         << " uv_off=" << cap_uv_offset_ << " (" << cap_width_ << "x"
         << cap_height_ << ")";
   } else {
