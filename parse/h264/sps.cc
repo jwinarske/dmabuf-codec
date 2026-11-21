@@ -138,12 +138,18 @@ bool ParseSps(const uint8_t* rbsp, size_t size, Sps* out) {
       return false;
     }
     sps.separate_colour_plane_flag = separate_colour_plane;
-    uint32_t ignore = 0;
-    if (!br.ReadUe(&ignore) ||  // bit_depth_luma_minus8
-        !br.ReadUe(&ignore) ||  // bit_depth_chroma_minus8
-        !br.SkipBits(1)) {      // qpprime_y_zero_transform_bypass_flag
+    uint32_t luma_minus8 = 0;
+    uint32_t chroma_minus8 = 0;
+    if (!br.ReadUe(&luma_minus8) || !br.ReadUe(&chroma_minus8) ||
+        !br.SkipBits(1)) {  // qpprime_y_zero_transform_bypass_flag
       return false;
     }
+    // 0..6 in every profile (7.4.2.1.1).
+    if (luma_minus8 > 6 || chroma_minus8 > 6) {
+      return false;
+    }
+    sps.bit_depth_luma = luma_minus8 + 8;
+    sps.bit_depth_chroma = chroma_minus8 + 8;
     bool scaling_matrix_present = false;
     if (!br.ReadFlag(&scaling_matrix_present)) {
       return false;

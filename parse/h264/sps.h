@@ -21,6 +21,9 @@ struct Sps {
   uint8_t level_idc = 0;
   uint32_t seq_parameter_set_id = 0;
   uint32_t chroma_format_idc = 1;  // 1 = 4:2:0 (default for non-high profiles)
+  // bit_depth_*_minus8 + 8; 8 for the profiles that do not carry them.
+  uint32_t bit_depth_luma = 8;
+  uint32_t bit_depth_chroma = 8;
   bool frame_mbs_only_flag = true;
   uint32_t width = 0;   // cropped luma width in pixels
   uint32_t height = 0;  // cropped luma height in pixels

@@ -74,6 +74,18 @@ VaapiH264Decoder::~VaapiH264Decoder() {
 
 bool VaapiH264Decoder::EnsureConfigured(const h264::Sps& sps) {
   if (configured_) return true;
+  // The context below is 8-bit 4:2:0. VA has no H.264 profile deeper than
+  // that, and a High 10 stream decoded into it comes out as garbage, so a
+  // stream it does not fit is refused.
+  if (sps.chroma_format_idc != 1 || sps.separate_colour_plane_flag ||
+      sps.bit_depth_luma != 8 || sps.bit_depth_chroma != 8) {
+    V4L2WC_LOG(V4L2WC_ERROR)
+        << "vaapi: H.264 profile " << static_cast<int>(sps.profile_idc)
+        << " (chroma_format_idc=" << sps.chroma_format_idc
+        << " bit_depth=" << sps.bit_depth_luma << "/" << sps.bit_depth_chroma
+        << ") is not 8-bit 4:2:0; not decoded";
+    return false;
+  }
   coded_w_ = sps.pic_width_in_mbs * 16;
   coded_h_ =
       sps.pic_height_in_map_units * 16 * (sps.frame_mbs_only_flag ? 1 : 2);

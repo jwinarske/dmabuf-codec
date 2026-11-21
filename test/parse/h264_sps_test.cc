@@ -109,6 +109,36 @@ int main() {
     CHECK(sps.matrix_coeffs == 2);
   }
 
+  // The bit depths: 8 where the profile does not carry them, and what a
+  // High 10 SPS (libx264, 64x64) and a High 4:2:2 one say.
+  {
+    Sps sps;
+    CHECK(ParseSps(rbsp.data(), rbsp.size(), &sps));
+    CHECK(sps.bit_depth_luma == 8 && sps.bit_depth_chroma == 8);
+    CHECK(parse_nal(bt709, bt709.size(), &sps));
+    CHECK(sps.bit_depth_luma == 8 && sps.bit_depth_chroma == 8);
+    const std::vector<uint8_t> high10 = {
+        0x67, 0x6e, 0x00, 0x0a, 0xa6, 0xcd, 0x94, 0x42, 0x6c, 0x05,
+        0xa8, 0x08, 0x08, 0x0a, 0x00, 0x00, 0x03, 0x00, 0x02, 0x00,
+        0x00, 0x03, 0x00, 0x28, 0x1e, 0x24, 0x4b, 0x2c};
+    Sps deep;
+    CHECK(parse_nal(high10, high10.size(), &deep));
+    CHECK(deep.profile_idc == 110);
+    CHECK(deep.bit_depth_luma == 10 && deep.bit_depth_chroma == 10);
+    CHECK(deep.chroma_format_idc == 1);
+    CHECK(deep.width == 64 && deep.height == 64);
+    const std::vector<uint8_t> high422 = {
+        0x67, 0x7a, 0x00, 0x0a, 0xbc, 0xd9, 0x44, 0x26, 0xc0, 0x5a,
+        0x80, 0x80, 0x80, 0xa0, 0x00, 0x00, 0x03, 0x00, 0x20, 0x00,
+        0x00, 0x03, 0x02, 0x81, 0xe2, 0x44, 0xb2, 0xc0};
+    Sps wide;
+    CHECK(parse_nal(high422, high422.size(), &wide));
+    CHECK(wide.profile_idc == 122);
+    CHECK(wide.chroma_format_idc == 2);
+    CHECK(wide.bit_depth_luma == 8);
+    CHECK(wide.width == 64 && wide.height == 64);
+  }
+
   // Malformed / truncated input must fail cleanly, never crash.
   {
     Sps sps;
